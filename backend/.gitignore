@@ -1,0 +1,5 @@
+# Ignorar dependencias de Node
+node_modules
+
+# ¡IMPORTANTE! Ignorar el archivo con las variables de entorno
+.env
