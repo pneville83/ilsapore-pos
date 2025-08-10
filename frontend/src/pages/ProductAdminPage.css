@@ -1,0 +1,103 @@
+/* frontend/src/pages/ProductAdminPage.css */
+
+.product-admin-layout {
+    display: flex;
+    gap: 20px;
+}
+
+.product-list-panel {
+    flex: 2;
+}
+
+.product-form-panel {
+    flex: 1;
+    background-color: var(--surface-color);
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    height: fit-content; /* Se ajusta al contenido */
+    position: sticky; /* Se mantiene visible al hacer scroll */
+    top: 20px;
+}
+
+.product-list-panel table tbody tr {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.product-list-panel table tbody tr:hover {
+    background-color: #f0f0f0;
+}
+
+.product-list-panel table .disabled td {
+    color: #999;
+    text-decoration: line-through;
+}
+
+.checkbox-label {
+    display: flex;
+    align-items: center;
+    margin: 10px 0;
+}
+
+.checkbox-label input {
+    width: auto;
+    margin-right: 10px;
+}
+
+.form-buttons {
+    display: flex;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+.form-buttons button[type="button"] {
+    background-color: var(--secondary-color);
+}
+
+/* --- ¡NUEVO! Estilos para la sección de variaciones --- */
+
+.variation-section {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px solid var(--border-color);
+}
+
+.variation-section p {
+    font-size: 0.85rem;
+    color: #6c757d;
+    margin: 0 0 10px 0;
+}
+
+.variation-row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+.variation-row input {
+    margin-bottom: 0;
+}
+
+.variation-row button {
+    background: var(--danger-color);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 25px;
+    height: 25px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0;
+    line-height: 1;
+}
+
+.add-variation-btn {
+    width: 100%;
+    margin-top: 5px;
+    background-color: #5a6268;
+}

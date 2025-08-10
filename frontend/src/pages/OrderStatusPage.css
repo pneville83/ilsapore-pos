@@ -1,0 +1,123 @@
+/* frontend/src/pages/OrderStatusPage.css */
+
+.status-page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--border-color);
+}
+
+.status-page-header h1 {
+    margin: 0;
+}
+
+.order-count {
+    background-color: var(--primary-color);
+    color: white;
+    padding: 5px 15px;
+    border-radius: 20px;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.status-page-layout {
+    display: grid;
+    /* Columnas flexibles que tienen un mínimo de 320px y un máximo de 1fr (lo que quepa) */
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 25px;
+}
+
+.order-ticket {
+    background-color: #fff;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.08);
+    display: flex;
+    flex-direction: column;
+    transition: all 0.3s ease;
+}
+
+.ticket-header {
+    padding: 15px 20px;
+    border-bottom: 1px dashed var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline; /* Alinea mejor los textos de diferente tamaño */
+}
+.ticket-header h3 {
+    margin: 0;
+    color: var(--primary-color);
+}
+.ticket-header span {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--secondary-color);
+}
+
+.ticket-body {
+    padding: 20px;
+    flex-grow: 1;
+}
+.ticket-body h4 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    color: var(--secondary-color);
+    letter-spacing: 0.5px;
+}
+.ticket-body p {
+    margin: 0 0 15px 0;
+    font-size: 1.1rem;
+}
+
+.ticket-body ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0 0 15px 0;
+}
+.ticket-body li {
+    padding: 5px 0;
+    display: flex;
+    justify-content: space-between;
+    border-bottom: 1px solid #f0f0f0;
+}
+.ticket-body li:last-child {
+    border-bottom: none;
+}
+.ticket-body .item-quantity {
+    font-weight: 600;
+    margin-right: 10px;
+}
+
+.ticket-footer {
+    padding: 15px;
+    background-color: var(--background-color);
+    border-top: 1px solid var(--border-color);
+    border-radius: 0 0 8px 8px;
+}
+
+.finalize-button {
+    width: 100%;
+    background-color: var(--success-color);
+    font-weight: 600;
+    padding: 12px;
+}
+.finalize-button:hover {
+    background-color: #218838;
+}
+
+/* --- Animación para nuevos pedidos --- */
+.order-ticket.new-order-alert {
+    animation: pulse 1s 2;
+    border: 1px solid var(--success-color);
+    box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+}

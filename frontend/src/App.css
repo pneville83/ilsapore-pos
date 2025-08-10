@@ -1,0 +1,110 @@
+/* frontend/src/App.css */
+
+/* --- Estilos Globales (sin cambios) --- */
+.container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+button { background-color: var(--primary-color); color: white; border: none; padding: 10px 15px; border-radius: 5px; cursor: pointer; font-family: 'Poppins', sans-serif; font-size: 1rem; transition: background-color 0.2s ease-in-out; }
+button:hover { background-color: var(--primary-hover); }
+button:disabled { background-color: var(--secondary-color); cursor: not-allowed; }
+input, select, textarea { width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 5px; border: 1px solid var(--border-color); font-size: 1rem; font-family: 'Poppins', sans-serif; }
+table { width: 100%; border-collapse: collapse; margin-top: 20px; background-color: var(--surface-color); box-shadow: 0 2px 4px rgba(0,0,0,0.1); font-size: 0.9rem; }
+th, td { padding: 12px 15px; border: 1px solid var(--border-color); text-align: left; }
+th { background-color: var(--background-color); font-weight: 600; }
+tfoot { font-weight: 700; background-color: #e9ecef; }
+hr { border: none; border-top: 1px solid var(--border-color); margin: 20px 0; }
+.table-container { width: 100%; overflow-x: auto; }
+
+/* --- Barra de Navegación (Escritorio) --- */
+.main-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--surface-color);
+  padding: 10px 40px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.nav-logo { height: 40px; width: auto; }
+.nav-links { display: flex; align-items: center; gap: 25px; }
+.nav-links a { text-decoration: none; color: var(--primary-color); font-weight: 500; padding: 5px 0; border-bottom: 2px solid transparent; transition: border-color 0.2s; }
+.nav-links a:hover { border-bottom-color: var(--primary-hover); }
+.main-nav button { background-color: var(--danger-color); }
+.nav-header { display: flex; align-items: center; gap: 25px; } /* ¡NUEVO! */
+
+/* --- Página de Login (sin cambios) --- */
+.login-container { max-width: 400px; margin: 50px auto; padding: 20px; background-color: var(--surface-color); box-shadow: 0 4px 8px rgba(0,0,0,0.1); border-radius: 8px; text-align: center; }
+.login-logo { width: 150px; height: auto; margin-bottom: 20px; }
+.login-container h2 { margin-top: 0; margin-bottom: 20px; }
+
+/* --- Layouts de varias columnas (sin cambios) --- */
+.order-page-layout, .product-admin-layout, .expenses-layout, .finance-layout { display: flex; gap: 20px; align-items: flex-start; }
+.product-list, .current-order { flex: 1; background: var(--surface-color); padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.product-list { flex: 1.5; }
+.current-order { position: sticky; top: 100px; }
+.cart-item { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; }
+.cart-item button { background: none; border: none; color: var(--danger-color); font-size: 1.2rem; cursor: pointer; padding: 0 5px; }
+
+/* --- Página de Reportes (sin cambios) --- */
+.report-controls { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; background-color: var(--surface-color); padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.report-controls > div { display: flex; flex-direction: column; }
+.report-controls label { margin-bottom: 5px; font-size: 0.9rem; font-weight: 500; }
+.report-controls .react-datepicker-wrapper input { margin-bottom: 0; }
+.export-button { margin-bottom: 20px; background-color: var(--success-color); }
+
+/*
+==============================================
+--- ¡REGLAS DE RESPONSIVIDAD (CORREGIDAS)! ---
+==============================================
+*/
+@media (max-width: 768px) {
+  .container {
+    padding: 10px;
+  }
+
+  /* --- Barra de Navegación en móvil (CORREGIDA) --- */
+  .main-nav {
+    flex-direction: column;
+    padding: 15px;
+    gap: 15px; /* Espacio entre el header y los links */
+  }
+
+  .nav-header {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .nav-links {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 10px 20px;
+    border-top: 1px solid var(--border-color); /* Separador visual */
+    padding-top: 15px;
+    width: 100%;
+  }
+  
+  /* --- Stacks para todos los layouts de 2 columnas --- */
+  .order-page-layout,
+  .product-admin-layout,
+  .expenses-layout,
+  .finance-layout {
+    flex-direction: column;
+  }
+  .current-order, .product-form-panel {
+    position: static;
+    top: auto;
+  }
+  .report-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .finance-header {
+    flex-direction: column;
+  }
+  .product-grid {
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 10px;
+  }
+}
