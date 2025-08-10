@@ -73,5 +73,5 @@ Sigue estos pasos para ejecutar el proyecto en un entorno de desarrollo local.
 ### 1. Clonar el Repositorio
 
 ```sh
-git clone <URL_de_tu_repositorio_en_github>
+git clone https://github.com/pneville83/ilsapore-pos.git
 cd ilsapore_pos
