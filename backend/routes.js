@@ -103,7 +103,8 @@ router.get('/finanzas/saldos', async (req, res) => { try { const query = `SELECT
 router.get('/finanzas/historial', async (req, res) => { try { const query = `SELECT * FROM transacciones ORDER BY fecha DESC;`; const { rows } = await db.query(query); res.json(rows); } catch (err) { console.error('Error al obtener historial:', err); res.status(500).send('Error en el servidor'); } });
 router.post('/finanzas/egreso', async (req, res) => { const { descripcion, monto, cuenta } = req.body; try { const query = `INSERT INTO transacciones (descripcion, tipo, cuenta, monto) VALUES ($1, 'Egreso', $2, $3) RETURNING *;`; const { rows } = await db.query(query, [descripcion, cuenta, monto]); res.status(201).json(rows[0]); } catch (err) { console.error('Error al crear egreso:', err); res.status(500).send('Error en el servidor'); } });
 
-// --- RUTAS DE REPORTES (MODIFICADAS CON ZONA HORARIA) ---
+
+// --- RUTAS DE REPORTES (CON LA LÓGICA DE ZONA HORARIA CORREGIDA) ---
 router.get('/reportes/cierre-caja', async (req, res) => {
     const { fecha_inicio, fecha_fin } = req.query;
     try {
@@ -113,7 +114,7 @@ router.get('/reportes/cierre-caja', async (req, res) => {
                 COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE 0 END), 0) as ingresos,
                 COALESCE(SUM(CASE WHEN tipo = 'Egreso' THEN monto ELSE 0 END), 0) as gastos
             FROM transacciones
-            WHERE (fecha AT TIME ZONE 'UTC' AT TIME ZONE $3)::date BETWEEN $1 AND $2
+            WHERE (fecha AT TIME ZONE $3)::date BETWEEN $1 AND $2
             GROUP BY cuenta;
         `;
         const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
@@ -136,7 +137,7 @@ router.get('/reportes/productos-vendidos', async (req, res) => {
             FROM productos p 
             JOIN detalles_pedido dp ON p.id = dp.producto_id 
             JOIN pedidos ped ON dp.pedido_id = ped.id 
-            WHERE (ped.fecha AT TIME ZONE 'UTC' AT TIME ZONE $3)::date BETWEEN $1 AND $2 
+            WHERE (ped.fecha AT TIME ZONE $3)::date BETWEEN $1 AND $2 
             GROUP BY p.nombre 
             ORDER BY total_vendido DESC;
         `;
@@ -150,7 +151,7 @@ router.get('/reportes/direcciones', async (req, res) => {
         const query = `
             SELECT direccion_mz, direccion_villa, COUNT(id) as numero_pedidos, SUM(total) as total_consumido 
             FROM pedidos 
-            WHERE (fecha AT TIME ZONE 'UTC' AT TIME ZONE $3)::date BETWEEN $1 AND $2 
+            WHERE (fecha AT TIME ZONE $3)::date BETWEEN $1 AND $2 
             GROUP BY direccion_mz, direccion_villa 
             ORDER BY total_consumido DESC;
         `;
