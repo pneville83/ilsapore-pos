@@ -7,7 +7,7 @@ const { ThermalPrinter, PrinterTypes } = require('node-thermal-printer');
 
 const router = express.Router();
 
-const TIMEZONE = 'America/Guayaquil';
+// --- Ya no necesitamos la constante TIMEZONE ---
 
 // --- El resto de tus rutas (printTicket, login, productos, pedidos, finanzas) no necesita cambios ---
 async function printTicket(pedido) {
@@ -86,20 +86,20 @@ router.get('/finanzas/saldos', async (req, res) => { try { const query = `SELECT
 router.get('/finanzas/historial', async (req, res) => { try { const query = `SELECT * FROM transacciones ORDER BY fecha DESC;`; const { rows } = await db.query(query); res.json(rows); } catch (err) { console.error('Error al obtener historial:', err); res.status(500).send('Error en el servidor'); } });
 router.post('/finanzas/egreso', async (req, res) => { const { descripcion, monto, cuenta } = req.body; try { const query = `INSERT INTO transacciones (descripcion, tipo, cuenta, monto) VALUES ($1, 'Egreso', $2, $3) RETURNING *;`; const { rows } = await db.query(query, [descripcion, cuenta, monto]); res.status(201).json(rows[0]); } catch (err) { console.error('Error al crear egreso:', err); res.status(500).send('Error en el servidor'); } });
 
-// --- RUTAS DE REPORTES (CON LA LÓGICA DE ZONA HORARIA FINAL Y DEFINITIVA) ---
+// --- RUTAS DE REPORTES (SIMPLIFICADAS, SIN CONVERSIÓN DE ZONA HORARIA) ---
 router.get('/reportes/cierre-caja', async (req, res) => {
     const { fecha_inicio, fecha_fin } = req.query;
     try {
+        // Añadimos +1 día a la fecha_fin para incluir todo el día
         const query = `
-            SELECT 
-                cuenta,
-                COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE 0 END), 0) as ingresos,
-                COALESCE(SUM(CASE WHEN tipo = 'Egreso' THEN monto ELSE 0 END), 0) as gastos
+            SELECT cuenta,
+                   COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE 0 END), 0) as ingresos,
+                   COALESCE(SUM(CASE WHEN tipo = 'Egreso' THEN monto ELSE 0 END), 0) as gastos
             FROM transacciones
-            WHERE (fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
+            WHERE fecha >= $1::date AND fecha < ($2::date + INTERVAL '1 day')
             GROUP BY cuenta;
         `;
-        const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
+        const { rows } = await db.query(query, [fecha_inicio, fecha_fin]);
         const resultado = { 'Efectivo': { ingresos: 0, gastos: 0, balance: 0 }, 'Transferencia': { ingresos: 0, gastos: 0, balance: 0 }, 'Tarjeta': { ingresos: 0, gastos: 0, balance: 0 } };
         rows.forEach(row => { if (resultado[row.cuenta]) { resultado[row.cuenta].ingresos = parseFloat(row.ingresos); resultado[row.cuenta].gastos = parseFloat(row.gastos); resultado[row.cuenta].balance = parseFloat(row.ingresos) - parseFloat(row.gastos); } });
         res.json(resultado);
@@ -114,11 +114,11 @@ router.get('/reportes/productos-vendidos', async (req, res) => {
             FROM productos p 
             JOIN detalles_pedido dp ON p.id = dp.producto_id 
             JOIN pedidos ped ON dp.pedido_id = ped.id 
-            WHERE (ped.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
+            WHERE ped.fecha >= $1::date AND ped.fecha < ($2::date + INTERVAL '1 day')
             GROUP BY p.nombre 
             ORDER BY total_vendido DESC;
         `;
-        const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
+        const { rows } = await db.query(query, [fecha_inicio, fecha_fin]);
         res.json(rows);
     } catch (err) { console.error('Error generando reporte de productos:', err); res.status(500).send('Error en el servidor'); }
 });
@@ -129,11 +129,11 @@ router.get('/reportes/direcciones', async (req, res) => {
         const query = `
             SELECT direccion_mz, direccion_villa, COUNT(id) as numero_pedidos, SUM(total) as total_consumido 
             FROM pedidos 
-            WHERE (fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
+            WHERE fecha >= $1::date AND fecha < ($2::date + INTERVAL '1 day')
             GROUP BY direccion_mz, direccion_villa 
             ORDER BY total_consumido DESC;
         `;
-        const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
+        const { rows } = await db.query(query, [fecha_inicio, fecha_fin]);
         res.json(rows);
     } catch (err) { console.error('Error generando reporte por dirección:', err); res.status(500).send('Error en el servidor'); }
 });
