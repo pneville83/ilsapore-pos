@@ -9,6 +9,7 @@ const router = express.Router();
 
 const TIMEZONE = 'America/Guayaquil';
 
+// --- El resto de tus rutas (printTicket, login, productos, pedidos, finanzas) no necesita cambios ---
 async function printTicket(pedido) {
     const printerInterface = process.env.PRINTER_INTERFACE;
     if (!printerInterface) { return; }
@@ -35,7 +36,6 @@ async function printTicket(pedido) {
         await printer.execute(); console.log("¡ÉXITO! Comando de impresión enviado.");
     } catch (error) { console.error(`ERROR DE IMPRESIÓN: ${error.message}`); }
 }
-
 router.post('/login', async (req, res) => {
     const { username, password } = req.body;
     if (username === 'cocina' && password === 'cocina123') {
@@ -50,7 +50,6 @@ router.post('/login', async (req, res) => {
         res.status(200).send({ message: 'Login exitoso', role: 'admin' });
     } catch (err) { console.error("Error en login de admin:", err); res.status(500).send('Error interno del servidor'); }
 });
-
 router.post('/pedidos', async (req, res) => {
     const { productos, direccion_mz, direccion_villa, total, observaciones, pagos } = req.body;
     const client = await db.getClient();
@@ -87,36 +86,28 @@ router.get('/finanzas/saldos', async (req, res) => { try { const query = `SELECT
 router.get('/finanzas/historial', async (req, res) => { try { const query = `SELECT * FROM transacciones ORDER BY fecha DESC;`; const { rows } = await db.query(query); res.json(rows); } catch (err) { console.error('Error al obtener historial:', err); res.status(500).send('Error en el servidor'); } });
 router.post('/finanzas/egreso', async (req, res) => { const { descripcion, monto, cuenta } = req.body; try { const query = `INSERT INTO transacciones (descripcion, tipo, cuenta, monto) VALUES ($1, 'Egreso', $2, $3) RETURNING *;`; const { rows } = await db.query(query, [descripcion, cuenta, monto]); res.status(201).json(rows[0]); } catch (err) { console.error('Error al crear egreso:', err); res.status(500).send('Error en el servidor'); } });
 
-// --- RUTAS DE REPORTES (CON LA LÓGICA DE ZONA HORARIA FINAL Y CORREGIDA) ---
+// --- RUTAS DE REPORTES (CON LA LECTURA DE PARÁMETROS CORREGIDA) ---
 router.get('/reportes/cierre-caja', async (req, res) => {
-    const { fecha_inicio, fecha_fin } = req.body;
+    // ¡CORRECCIÓN! Leer desde req.query para peticiones GET
+    const { fecha_inicio, fecha_fin } = req.query;
     try {
         const query = `
-            SELECT 
-                cuenta,
-                COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE 0 END), 0) as ingresos,
-                COALESCE(SUM(CASE WHEN tipo = 'Egreso' THEN monto ELSE 0 END), 0) as gastos
+            SELECT cuenta,
+                   COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE 0 END), 0) as ingresos,
+                   COALESCE(SUM(CASE WHEN tipo = 'Egreso' THEN monto ELSE 0 END), 0) as gastos
             FROM transacciones
             WHERE (fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
             GROUP BY cuenta;
         `;
         const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
-        
         const resultado = { 'Efectivo': { ingresos: 0, gastos: 0, balance: 0 }, 'Transferencia': { ingresos: 0, gastos: 0, balance: 0 }, 'Tarjeta': { ingresos: 0, gastos: 0, balance: 0 } };
-        rows.forEach(row => {
-            if (resultado[row.cuenta]) {
-                resultado[row.cuenta].ingresos = parseFloat(row.ingresos);
-                resultado[row.cuenta].gastos = parseFloat(row.gastos);
-                resultado[row.cuenta].balance = parseFloat(row.ingresos) - parseFloat(row.gastos);
-            }
-        });
+        rows.forEach(row => { if (resultado[row.cuenta]) { resultado[row.cuenta].ingresos = parseFloat(row.ingresos); resultado[row.cuenta].gastos = parseFloat(row.gastos); resultado[row.cuenta].balance = parseFloat(row.ingresos) - parseFloat(row.gastos); } });
         res.json(resultado);
-    } catch (err) {
-        console.error('Error generando cierre de caja:', err);
-        res.status(500).send('Error en el servidor');
-    }
+    } catch (err) { console.error('Error generando cierre de caja:', err); res.status(500).send('Error en el servidor'); }
 });
+
 router.get('/reportes/productos-vendidos', async (req, res) => {
+    // ¡CORRECCIÓN! Leer desde req.query
     const { fecha_inicio, fecha_fin } = req.query;
     try {
         const query = `
@@ -130,12 +121,11 @@ router.get('/reportes/productos-vendidos', async (req, res) => {
         `;
         const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
         res.json(rows);
-    } catch (err) {
-        console.error('Error generando reporte de productos:', err);
-        res.status(500).send('Error en el servidor');
-    }
+    } catch (err) { console.error('Error generando reporte de productos:', err); res.status(500).send('Error en el servidor'); }
 });
+
 router.get('/reportes/direcciones', async (req, res) => {
+    // ¡CORRECCIÓN! Leer desde req.query
     const { fecha_inicio, fecha_fin } = req.query;
     try {
         const query = `
@@ -147,10 +137,7 @@ router.get('/reportes/direcciones', async (req, res) => {
         `;
         const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
         res.json(rows);
-    } catch (err) {
-        console.error('Error generando reporte por dirección:', err);
-        res.status(500).send('Error en el servidor');
-    }
+    } catch (err) { console.error('Error generando reporte por dirección:', err); res.status(500).send('Error en el servidor'); }
 });
 
 module.exports = router;
