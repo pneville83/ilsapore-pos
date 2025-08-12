@@ -100,20 +100,10 @@ router.get('/reportes/cierre-caja', async (req, res) => {
             GROUP BY cuenta;
         `;
         const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
-        
         const resultado = { 'Efectivo': { ingresos: 0, gastos: 0, balance: 0 }, 'Transferencia': { ingresos: 0, gastos: 0, balance: 0 }, 'Tarjeta': { ingresos: 0, gastos: 0, balance: 0 } };
-        rows.forEach(row => {
-            if (resultado[row.cuenta]) {
-                resultado[row.cuenta].ingresos = parseFloat(row.ingresos);
-                resultado[row.cuenta].gastos = parseFloat(row.gastos);
-                resultado[row.cuenta].balance = parseFloat(row.ingresos) - parseFloat(row.gastos);
-            }
-        });
+        rows.forEach(row => { if (resultado[row.cuenta]) { resultado[row.cuenta].ingresos = parseFloat(row.ingresos); resultado[row.cuenta].gastos = parseFloat(row.gastos); resultado[row.cuenta].balance = parseFloat(row.ingresos) - parseFloat(row.gastos); } });
         res.json(resultado);
-    } catch (err) {
-        console.error('Error generando cierre de caja:', err);
-        res.status(500).send('Error en el servidor');
-    }
+    } catch (err) { console.error('Error generando cierre de caja:', err); res.status(500).send('Error en el servidor'); }
 });
 
 router.get('/reportes/productos-vendidos', async (req, res) => {
@@ -130,10 +120,7 @@ router.get('/reportes/productos-vendidos', async (req, res) => {
         `;
         const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
         res.json(rows);
-    } catch (err) {
-        console.error('Error generando reporte de productos:', err);
-        res.status(500).send('Error en el servidor');
-    }
+    } catch (err) { console.error('Error generando reporte de productos:', err); res.status(500).send('Error en el servidor'); }
 });
 
 router.get('/reportes/direcciones', async (req, res) => {
@@ -148,10 +135,7 @@ router.get('/reportes/direcciones', async (req, res) => {
         `;
         const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
         res.json(rows);
-    } catch (err) {
-        console.error('Error generando reporte por dirección:', err);
-        res.status(500).send('Error en el servidor');
-    }
+    } catch (err) { console.error('Error generando reporte por dirección:', err); res.status(500).send('Error en el servidor'); }
 });
 
 module.exports = router;
