@@ -14,21 +14,26 @@ function LoginPage() {
     e.preventDefault();
     setError('');
     try {
+      // La llamada a la API ahora devuelve un objeto con { token, user }
       const response = await api.login(username, password);
-      sessionStorage.setItem('isLoggedIn', 'true');
-      sessionStorage.setItem('userRole', response.data.role); // Guardamos el rol
 
-      // --- ¡MODIFICACIÓN! Redirección basada en roles ---
-      const role = response.data.role;
+      // --- ¡CAMBIO CLAVE! Guardamos el token y la info del usuario en localStorage ---
+      // localStorage es persistente, a diferencia de sessionStorage.
+      localStorage.setItem('authToken', response.data.token);
+      localStorage.setItem('userInfo', JSON.stringify(response.data.user));
+
+      // Redirección basada en el rol del usuario
+      const role = response.data.user.rol;
       if (role === 'cocina') {
         navigate('/estado-pedidos');
       } else if (role === 'mesero') {
-        navigate('/pedidos'); // El mesero va a "Tomar Pedido"
-      } else {
-        navigate('/pedidos'); // El admin también va a "Tomar Pedido" por defecto
+        navigate('/pedidos');
+      } else { // admin y superadmin
+        navigate('/pedidos');
       }
     } catch (err) {
       setError('Usuario o contraseña incorrectos.');
+      console.error('Error de login:', err);
     }
   };
 

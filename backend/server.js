@@ -1,49 +1,71 @@
 // backend/server.js
+
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config(); 
-const http = require('http'); // Módulo nativo de Node.js
-const { Server } = require("socket.io"); // Importamos el servidor de Socket.IO
+const http = require('http');
+const { Server } = require("socket.io");
+// --- ¡NUEVO! Importamos el middleware de JWT ---
+const { expressjwt: jwt } = require('express-jwt');
 
-const apiRoutes = require('./routes');
+const apiRoutes = require('./routes1');
 const app = express();
 
-// Creamos un servidor HTTP a partir de nuestra app de Express
+const corsOptions = {
+  origin: "*", // Simplificado para desarrollo, ajustar en producción
+  methods: ["GET", "POST", "PATCH", "PUT", "DELETE"]
+};
 const server = http.createServer(app);
+const io = new Server(server, { cors: corsOptions });
 
-// Creamos una instancia del servidor de Socket.IO y le permitimos
-// recibir conexiones desde cualquier origen (nuestro frontend)
-const io = new Server(server, {
-  cors: {
-    origin: "*", // En producción, deberías restringir esto a la URL de tu Vercel
-    methods: ["GET", "POST"]
-  }
-});
-
-// Middleware para hacer 'io' accesible desde las rutas
-// Así, podemos emitir eventos desde nuestros endpoints de la API
+app.use(cors(corsOptions));
 app.use((req, res, next) => {
   req.io = io;
   next();
 });
-
-// Middlewares de Express
-app.use(cors());
 app.use(express.json());
-app.use('/api', apiRoutes);
 
-// Lógica de Socket.IO
-io.on('connection', (socket) => {
-  console.log('Un usuario se ha conectado:', socket.id);
+// --- ¡NUEVO! Middleware de Autenticación JWT ---
+// Esta función protegerá TODAS las rutas que vengan después de ella.
+// Extraerá el token del encabezado 'Authorization: Bearer TOKEN'
+// y lo decodificará. Si el token es válido, añadirá un objeto 'req.auth'
+// con la información del usuario (id, rol, ubicacion_id).
+// Si el token es inválido o no existe, devolverá un error 401 Unauthorized.
+const authenticateJwt = jwt({
+  secret: process.env.JWT_SECRET,
+  algorithms: ["HS256"]
+});
 
-  socket.on('disconnect', () => {
-    console.log('Un usuario se ha desconectado:', socket.id);
-  });
+// La ruta de login NO debe estar protegida, así que la definimos ANTES del middleware.
+// Usamos un "router" separado para las rutas públicas.
+const publicRouter = express.Router();
+require('./routes/public')(publicRouter); // Creamos un nuevo archivo para las rutas públicas
+app.use('/api', publicRouter);
+
+// Aplicamos el middleware de autenticación a todas las rutas de la API que vengan después.
+app.use('/api', authenticateJwt);
+
+// Usamos el router principal para las rutas protegidas.
+const protectedRouter = express.Router();
+require('./routes/protected')(protectedRouter); // Creamos un nuevo archivo para las rutas protegidas
+app.use('/api', protectedRouter);
+
+// Manejador de errores para JWT (si un token es inválido)
+app.use((err, req, res, next) => {
+  if (err.name === 'UnauthorizedError') {
+    res.status(401).send('Token inválido o expirado.');
+  } else {
+    next(err);
+  }
 });
 
 
+io.on('connection', (socket) => {
+  console.log('Un usuario se ha conectado:', socket.id);
+  socket.on('disconnect', () => { console.log('Un usuario se ha desconectado:', socket.id); });
+});
+
 const PORT = process.env.PORT || 4000;
-// ¡IMPORTANTE! Ahora iniciamos 'server', no 'app'.
 server.listen(PORT, () => {
   console.log(`Servidor y WebSocket corriendo en el puerto ${PORT}`);
 });

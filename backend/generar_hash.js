@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
-const password = 'johnpeter1983'; // <-- CAMBIA ESTO
+const password = 'johnpeter1983'; // La contraseña para el nuevo admin
 const salt = bcrypt.genSaltSync(10);
 const password_hash = bcrypt.hashSync(password, salt);
-console.log('Tu nuevo hash es:');
+console.log('Hash para admin_joya:');
 console.log(password_hash);

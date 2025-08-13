@@ -4,6 +4,7 @@ import io from 'socket.io-client';
 import api from '../services/api';
 import alertSound from '../assets/alert.mp3';
 import './OrderStatusPage.css';
+// Ya no se importa 'useLocation'
 
 const SOCKET_URL = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:4000';
 
@@ -13,6 +14,9 @@ function OrderStatusPage() {
     const [error, setError] = useState('');
     const [newOrderAlert, setNewOrderAlert] = useState(null);
     const [audio] = useState(new Audio(alertSound));
+
+    const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+    const userRole = userInfo?.rol;
 
     const fetchActiveOrders = useCallback(async () => {
         try {
@@ -30,19 +34,24 @@ function OrderStatusPage() {
 
     useEffect(() => {
         fetchActiveOrders();
+    }, [fetchActiveOrders]);
+
+    useEffect(() => {
         const socket = io(SOCKET_URL);
         socket.on('connect', () => console.log('Conectado a WebSocket:', socket.id));
+        
         socket.on('nuevo_pedido', (nuevoPedido) => {
-            audio.play().catch(e => console.error("Error al reproducir sonido:", e));
-            setActiveOrders(prevOrders => [nuevoPedido, ...prevOrders]);
+            fetchActiveOrders(); // La forma más simple de asegurar consistencia
             setNewOrderAlert(nuevoPedido.id);
             setTimeout(() => setNewOrderAlert(null), 5000);
         });
+
         socket.on('disconnect', () => console.log('Desconectado de WebSocket.'));
+        
         return () => {
             socket.disconnect();
         };
-    }, [fetchActiveOrders, audio]);
+    }, [audio, fetchActiveOrders]);
 
     const handleFinalizeOrder = async (orderId) => {
         try {
@@ -70,7 +79,12 @@ function OrderStatusPage() {
                     {activeOrders.map(order => (
                         <div key={order.id} className={`order-ticket ${newOrderAlert === order.id ? 'new-order-alert' : ''}`}>
                             <div className="ticket-header">
-                                <h3>Pedido #{order.id}</h3>
+                                <div>
+                                    <h3>Pedido #{order.id}</h3>
+                                    {userRole === 'superadmin' && order.nombre_ubicacion && (
+                                        <span className="ticket-location">{order.nombre_ubicacion}</span>
+                                    )}
+                                </div>
                                 <span>{new Date(order.fecha).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                             </div>
                             <div className="ticket-body">
@@ -81,7 +95,6 @@ function OrderStatusPage() {
                                             <span>
                                                 <strong className="item-quantity">{prod.cantidad}x</strong> 
                                                 {prod.nombre}
-                                                {/* ¡NUEVO! Muestra la variación si existe */}
                                                 {prod.nombre_variacion && <span className="item-variation">({prod.nombre_variacion})</span>}
                                             </span>
                                         </li>
@@ -91,7 +104,6 @@ function OrderStatusPage() {
                                 <p>Mz: {order.direccion_mz}, Villa: {order.direccion_villa}</p>
                                 {order.observaciones && (<><h4>Observaciones:</h4><p>{order.observaciones}</p></>)}
                                 
-                                {/* ¡NUEVO! Sección para el total y la forma de pago */}
                                 <div className="ticket-payment-summary">
                                     <div className="total">
                                         Total: ${parseFloat(order.total).toFixed(2)}

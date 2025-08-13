@@ -107,4 +107,36 @@ hr { border: none; border-top: 1px solid var(--border-color); margin: 20px 0; }
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: 10px;
   }
+  
+}
+
+/* ¡NUEVO! Estilos para la barra de herramientas del Super Admin */
+.admin-toolbar {
+    background-color: #343a40;
+    color: white;
+    padding: 10px 40px;
+    position: sticky;
+    top: 74px; /* Se pega justo debajo de la barra de navegación principal */
+    z-index: 99;
+}
+
+.location-filter-global {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.location-filter-global label {
+    font-weight: 500;
+    margin-bottom: 0;
+}
+
+.location-filter-global select {
+    background-color: #495057;
+    color: white;
+    border: 1px solid #6c757d;
+    border-radius: 5px;
+    padding: 5px 10px;
+    margin-bottom: 0;
+    width: auto;
 }

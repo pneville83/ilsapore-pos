@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import DatePicker from 'react-datepicker';
 import api from '../services/api';
 import { exportToExcel } from '../utils/exportUtils';
+// Ya no se importa 'useLocation'
 
 function ReportPage() {
     const [startDate, setStartDate] = useState(new Date());
@@ -13,28 +14,24 @@ function ReportPage() {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
 
+    // Se elimina la lógica del 'useEffect' que dependía del contexto
+
     const handleGenerateReport = async () => {
         setIsLoading(true);
         setError('');
         setReportData(null);
-
-        // --- ¡LÓGICA CLAVE Y DEFINITIVA! ---
-        // 1. Tomamos la fecha de inicio seleccionada y la ponemos al inicio del día (00:00:00).
+        
         const startOfDay = new Date(startDate);
         startOfDay.setHours(0, 0, 0, 0);
-
-        // 2. Tomamos la fecha de fin seleccionada y la ponemos al final del día (23:59:59).
         const endOfDay = new Date(endDate);
         endOfDay.setHours(23, 59, 59, 999);
 
-        // 3. Convertimos estas fechas locales a su equivalente en formato de string UTC (ISO 8601).
-        //    Ej: '2025-08-12 00:00:00' en Guayaquil se convierte en '2025-08-12T05:00:00.000Z'.
         const fecha_inicio_utc = startOfDay.toISOString();
         const fecha_fin_utc = endOfDay.toISOString();
         
         try {
             let response;
-            // Pasamos los strings UTC al backend.
+            // Las llamadas a la API ahora son simples. El interceptor se encarga del filtro.
             if (reportType === 'cierre-caja') {
                 response = await api.getReporteCierreCaja(fecha_inicio_utc, fecha_fin_utc);
             } else if (reportType === 'productos-vendidos') {
@@ -51,7 +48,6 @@ function ReportPage() {
         }
     };
     
-    // ... (El resto de las funciones: handleExport, renderTable no necesitan cambios)
     const handleExport = () => {
         if (!reportData) return alert("No hay datos para exportar.");
         let dataToExport;
@@ -63,6 +59,7 @@ function ReportPage() {
         const fileName = `reporte_${reportType}_${formatDate(startDate)}_a_${formatDate(endDate)}`;
         exportToExcel(dataToExport, fileName);
     };
+
     const renderTable = () => {
         if (!reportData) return null;
         if (reportType === 'cierre-caja') {
@@ -108,4 +105,5 @@ function ReportPage() {
         </div>
     );
 }
+
 export default ReportPage;

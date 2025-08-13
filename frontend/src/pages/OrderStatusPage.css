@@ -42,7 +42,8 @@
     border-bottom: 1px dashed var(--border-color);
     display: flex;
     justify-content: space-between;
-    align-items: baseline;
+    /* ¡CAMBIO! Alineamos al inicio para que el bloque de título y la hora no se separen verticalmente */
+    align-items: flex-start; 
 }
 .ticket-header h3 {
     margin: 0;
@@ -52,7 +53,21 @@
     font-size: 0.9rem;
     font-weight: 500;
     color: var(--secondary-color);
+    flex-shrink: 0; /* Evita que la hora se encoja */
 }
+
+/* ¡NUEVO! Estilo para la etiqueta de la ubicación */
+.ticket-location {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--primary-color);
+    background-color: #e7f3ff;
+    padding: 2px 8px;
+    border-radius: 10px;
+    display: inline-block;
+    margin-top: 5px;
+}
+
 
 .ticket-body {
     padding: 20px;
@@ -88,14 +103,12 @@
     font-weight: 600;
     margin-right: 10px;
 }
-/* ¡NUEVO! Para el nombre de la variación */
 .item-variation {
     font-size: 0.9rem;
     color: #6c757d;
     margin-left: 5px;
 }
 
-/* ¡NUEVO! Estilos para el resumen del pago */
 .ticket-payment-summary {
     margin-top: 15px;
     padding-top: 15px;

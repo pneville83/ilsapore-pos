@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import './FinancePage.css';
+// Ya no se importa 'useLocation'
 
 function FinancePage() {
     const [saldos, setSaldos] = useState({ 'Efectivo': { balance: 0 }, 'Transferencia': { balance: 0 }, 'Tarjeta': { balance: 0 } });
@@ -12,30 +13,45 @@ function FinancePage() {
     const [cuenta, setCuenta] = useState('Efectivo');
     const [editingTransaction, setEditingTransaction] = useState(null);
 
+    const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+    const userRole = userInfo?.rol;
+
     const fetchData = useCallback(async () => {
         try {
-            const [saldosRes, historialRes] = await Promise.all([api.getSaldos(), api.getHistorialTransacciones()]);
+            setStatusMessage('Cargando datos...');
+            const [saldosRes, historialRes] = await Promise.all([
+                api.getSaldos(), 
+                api.getHistorialTransacciones()
+            ]);
             setSaldos(saldosRes.data);
             setHistorial(historialRes.data);
-        } catch (error) { setStatusMessage('Error al cargar datos.'); }
+            setStatusMessage('');
+        } catch (error) { 
+            console.error("Error al cargar datos financieros:", error);
+            setStatusMessage('Error al cargar datos.'); 
+        }
     }, []);
 
-    useEffect(() => { fetchData(); }, [fetchData]);
+    useEffect(() => { 
+        fetchData();
+    }, [fetchData]);
 
     const handleSubmitEgreso = async (e) => {
         e.preventDefault();
         if (!descripcion || !monto) return alert('Por favor, complete todos los campos.');
+        
         try {
             await api.crearTransaccion({ descripcion, monto, cuenta, tipo: 'Egreso' });
             setStatusMessage('Egreso registrado con éxito.');
             setDescripcion(''); setMonto('');
             fetchData();
-        } catch (error) { setStatusMessage('Error al registrar el egreso.'); }
+        } catch (error) { 
+            console.error("Error al registrar egreso:", error);
+            setStatusMessage('Error al registrar el egreso.'); 
+        }
     };
 
-    const handleEdit = (transaccion) => {
-        setEditingTransaction({ ...transaccion });
-    };
+    const handleEdit = (transaccion) => { setEditingTransaction({ ...transaccion }); };
 
     const handleUpdate = async (e) => {
         e.preventDefault();
@@ -53,9 +69,8 @@ function FinancePage() {
     
     const handleDelete = async (transaccion) => {
         const confirmMessage = transaccion.tipo === 'Ingreso' 
-            ? `¿Estás seguro de que quieres CANCELAR el Pedido #${transaccion.pedido_id}?\n\nEsta acción eliminará el pedido, sus detalles y todos sus pagos asociados. Es irreversible.`
+            ? `¿Estás seguro de que quieres CANCELAR el Pedido #${transaccion.pedido_id}?\n\nEsta acción eliminará el pedido y sus transacciones asociadas. Es irreversible.`
             : `¿Estás seguro de que quieres eliminar el gasto "${transaccion.descripcion}"?`;
-
         if (window.confirm(confirmMessage)) {
             try {
                 await api.eliminarTransaccion(transaccion.id);
@@ -92,18 +107,26 @@ function FinancePage() {
                     </div>
                 </div>
             )}
-
             <div>
                 <h1>Finanzas y Saldos de Cuentas</h1>
                 <div className="finance-header">{Object.keys(saldos).map(key => (<div key={key} className="balance-card"><h3>Saldo en {key}</h3><p className={`amount ${saldos[key].balance >= 0 ? 'positive' : 'negative'}`}>{formatCurrency(saldos[key].balance)}</p></div>))}</div>
                 <div className="finance-layout">
                     <div className="new-expense-panel">
                         <h2>Registrar Egreso/Gasto</h2>
-                        <form onSubmit={handleSubmitEgreso}><label>Descripción:</label><textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required rows="3" /><label>Monto ($):</label><input type="number" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} required /><label>Pagar desde la cuenta de:</label><select value={cuenta} onChange={(e) => setCuenta(e.target.value)}><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option></select><button type="submit" style={{width: '100%', marginTop: '10px'}}>Guardar Egreso</button></form>
+                        <form onSubmit={handleSubmitEgreso}>
+                            <label>Descripción:</label><textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required rows="3" />
+                            <label>Monto ($):</label><input type="number" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} required />
+                            <label>Pagar desde la cuenta de:</label>
+                            <select value={cuenta} onChange={(e) => setCuenta(e.target.value)}>
+                                <option value="Efectivo">Efectivo</option>
+                                <option value="Transferencia">Transferencia</option>
+                            </select>
+                            <button type="submit" style={{width: '100%', marginTop: '10px'}}>Guardar Egreso</button>
+                        </form>
                         {statusMessage && <p>{statusMessage}</p>}
                     </div>
                     <div className="transaction-history-panel">
-                        <h2>Historial de Transacciones (Kardex)</h2>
+                        <h2>Historial de Transacciones</h2>
                         <div className="table-container">
                             <table>
                                 <thead><tr><th>Fecha</th><th>Descripción</th><th>Cuenta</th><th>Monto</th><th>Acciones</th></tr></thead>
