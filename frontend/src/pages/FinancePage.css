@@ -1,76 +1,22 @@
 /* frontend/src/pages/FinancePage.css */
-
-.finance-header {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 20px;
-    margin-bottom: 30px;
-}
-
-.balance-card {
-    flex: 1;
-    min-width: 200px;
-    background-color: var(--surface-color);
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.balance-card h3 {
-    margin: 0 0 10px 0;
-    font-size: 1rem;
-    color: var(--secondary-color);
-}
-
-.balance-card .amount {
-    font-size: 2rem;
-    font-weight: 700;
-}
-
-.balance-card .amount.positive {
-    color: var(--success-color);
-}
-
-.balance-card .amount.negative {
-    color: var(--danger-color);
-}
-
-.finance-layout {
-    display: flex;
-    gap: 30px;
-}
-
-.new-expense-panel {
-    flex: 1;
-    background-color: var(--surface-color);
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    height: fit-content;
-}
-
-.new-expense-panel h2 {
-    margin-top: 0;
-    border-bottom: 2px solid var(--border-color);
-    padding-bottom: 10px;
-}
-
-.transaction-history-panel {
-    flex: 2;
-}
-
-.transaction-history-panel h2 {
-    margin-top: 0;
-}
-
-.transaction-history-panel table .amount-cell {
-    font-weight: 600;
-    text-align: right;
-}
-.transaction-history-panel table .income {
-    color: var(--success-color);
-}
-.transaction-history-panel table .expense {
-    color: var(--danger-color);
-}
-
+.finance-header { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 30px; }
+.balance-card { flex: 1; min-width: 200px; background-color: var(--surface-color); padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.balance-card h3 { margin: 0 0 10px 0; font-size: 1rem; color: var(--secondary-color); }
+.balance-card .amount { font-size: 2rem; font-weight: 700; }
+.balance-card .amount.positive { color: var(--success-color); }
+.balance-card .amount.negative { color: var(--danger-color); }
+.finance-layout { display: flex; gap: 30px; }
+.new-expense-panel { flex: 1; background-color: var(--surface-color); padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); height: fit-content; }
+.new-expense-panel h2 { margin-top: 0; border-bottom: 2px solid var(--border-color); padding-bottom: 10px; }
+.transaction-history-panel { flex: 2; }
+.transaction-history-panel h2 { margin-top: 0; }
+.transaction-history-panel table .amount-cell { font-weight: 600; text-align: right; }
+.transaction-history-panel table .income { color: var(--success-color); }
+.transaction-history-panel table .expense { color: var(--danger-color); }
+.transaction-history-panel table .action-cell { text-align: right; white-space: nowrap; }
+.transaction-history-panel table .action-cell button { padding: 5px 8px; font-size: 0.8rem; margin-left: 5px; }
+.transaction-history-panel table .action-cell button.edit-btn { background-color: var(--secondary-color); }
+.edit-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+.edit-modal { background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 500px; }
+.edit-modal h2 { margin-top: 0; }
+.edit-modal-buttons { display: flex; gap: 10px; margin-top: 20px; }

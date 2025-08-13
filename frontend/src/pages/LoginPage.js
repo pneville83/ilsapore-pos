@@ -2,7 +2,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../services/api';
-// --- ¡NUEVO! Importamos la imagen del logo ---
 import logo from '../assets/logo-ilsapore.png';
 
 function LoginPage() {
@@ -17,12 +16,16 @@ function LoginPage() {
     try {
       const response = await api.login(username, password);
       sessionStorage.setItem('isLoggedIn', 'true');
-      sessionStorage.setItem('userRole', response.data.role);
+      sessionStorage.setItem('userRole', response.data.role); // Guardamos el rol
 
-      if (response.data.role === 'cocina') {
+      // --- ¡MODIFICACIÓN! Redirección basada en roles ---
+      const role = response.data.role;
+      if (role === 'cocina') {
         navigate('/estado-pedidos');
+      } else if (role === 'mesero') {
+        navigate('/pedidos'); // El mesero va a "Tomar Pedido"
       } else {
-        navigate('/pedidos');
+        navigate('/pedidos'); // El admin también va a "Tomar Pedido" por defecto
       }
     } catch (err) {
       setError('Usuario o contraseña incorrectos.');
@@ -31,9 +34,7 @@ function LoginPage() {
 
   return (
     <div className="login-container">
-      {/* --- ¡NUEVO! Añadimos la imagen del logo aquí --- */}
       <img src={logo} alt="Logo de Il Sapore POS" className="login-logo" />
-
       <h2>Iniciar Sesión</h2>
       <form onSubmit={handleLogin}>
         <div>
