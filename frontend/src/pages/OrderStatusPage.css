@@ -8,11 +8,9 @@
     padding-bottom: 10px;
     border-bottom: 2px solid var(--border-color);
 }
-
 .status-page-header h1 {
     margin: 0;
 }
-
 .order-count {
     background-color: var(--primary-color);
     color: white;
@@ -24,7 +22,6 @@
 
 .status-page-layout {
     display: grid;
-    /* Columnas flexibles que tienen un mínimo de 320px y un máximo de 1fr (lo que quepa) */
     grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
     gap: 25px;
 }
@@ -32,6 +29,7 @@
 .order-ticket {
     background-color: #fff;
     border: 1px solid var(--border-color);
+    border-top: 5px solid var(--primary-color);
     border-radius: 8px;
     box-shadow: 0 2px 5px rgba(0,0,0,0.08);
     display: flex;
@@ -44,7 +42,7 @@
     border-bottom: 1px dashed var(--border-color);
     display: flex;
     justify-content: space-between;
-    align-items: baseline; /* Alinea mejor los textos de diferente tamaño */
+    align-items: baseline;
 }
 .ticket-header h3 {
     margin: 0;
@@ -72,7 +70,6 @@
     margin: 0 0 15px 0;
     font-size: 1.1rem;
 }
-
 .ticket-body ul {
     list-style-type: none;
     padding: 0;
@@ -91,6 +88,32 @@
     font-weight: 600;
     margin-right: 10px;
 }
+/* ¡NUEVO! Para el nombre de la variación */
+.item-variation {
+    font-size: 0.9rem;
+    color: #6c757d;
+    margin-left: 5px;
+}
+
+/* ¡NUEVO! Estilos para el resumen del pago */
+.ticket-payment-summary {
+    margin-top: 15px;
+    padding-top: 15px;
+    border-top: 1px dashed var(--border-color);
+}
+.ticket-payment-summary .total {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    text-align: right;
+    margin-bottom: 10px;
+}
+.ticket-payment-summary .payment-method {
+    font-size: 0.9rem;
+    color: var(--secondary-color);
+    text-align: right;
+}
+
 
 .ticket-footer {
     padding: 15px;
@@ -98,7 +121,6 @@
     border-top: 1px solid var(--border-color);
     border-radius: 0 0 8px 8px;
 }
-
 .finalize-button {
     width: 100%;
     background-color: var(--success-color);
@@ -109,13 +131,11 @@
     background-color: #218838;
 }
 
-/* --- Animación para nuevos pedidos --- */
 .order-ticket.new-order-alert {
     animation: pulse 1s 2;
     border: 1px solid var(--success-color);
     box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
 }
-
 @keyframes pulse {
     0% { transform: scale(1); }
     50% { transform: scale(1.02); }

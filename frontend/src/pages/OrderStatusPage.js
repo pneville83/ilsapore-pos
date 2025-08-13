@@ -1,10 +1,9 @@
 // frontend/src/pages/OrderStatusPage.js
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import io from 'socket.io-client';
 import api from '../services/api';
 import alertSound from '../assets/alert.mp3';
-import './OrderStatusPage.css'; // Asegúrate de que el CSS está importado
+import './OrderStatusPage.css';
 
 const SOCKET_URL = process.env.REACT_APP_API_URL ? process.env.REACT_APP_API_URL.replace('/api', '') : 'http://localhost:4000';
 
@@ -15,20 +14,22 @@ function OrderStatusPage() {
     const [newOrderAlert, setNewOrderAlert] = useState(null);
     const [audio] = useState(new Audio(alertSound));
 
-    useEffect(() => {
-        const fetchInitialOrders = async () => {
-            try {
-                const response = await api.getPedidosActivos();
-                setActiveOrders(response.data);
-            } catch (err) {
-                setError('Error al cargar los pedidos activos.');
-                console.error(err);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        fetchInitialOrders();
+    const fetchActiveOrders = useCallback(async () => {
+        try {
+            setIsLoading(true);
+            const response = await api.getPedidosActivos();
+            setActiveOrders(response.data);
+            setError('');
+        } catch (err) {
+            setError('Error al cargar los pedidos activos.');
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
+    }, []);
 
+    useEffect(() => {
+        fetchActiveOrders();
         const socket = io(SOCKET_URL);
         socket.on('connect', () => console.log('Conectado a WebSocket:', socket.id));
         socket.on('nuevo_pedido', (nuevoPedido) => {
@@ -38,11 +39,10 @@ function OrderStatusPage() {
             setTimeout(() => setNewOrderAlert(null), 5000);
         });
         socket.on('disconnect', () => console.log('Desconectado de WebSocket.'));
-        
         return () => {
             socket.disconnect();
         };
-    }, [audio]);
+    }, [fetchActiveOrders, audio]);
 
     const handleFinalizeOrder = async (orderId) => {
         try {
@@ -54,13 +54,8 @@ function OrderStatusPage() {
         }
     };
 
-    if (isLoading) {
-        return <p>Cargando pedidos activos...</p>;
-    }
-
-    if (error) {
-        return <p style={{ color: 'red' }}>{error}</p>;
-    }
+    if (isLoading) { return <p>Cargando pedidos activos...</p>; }
+    if (error) { return <p style={{ color: 'red' }}>{error}</p>; }
 
     return (
         <div>
@@ -68,7 +63,6 @@ function OrderStatusPage() {
                 <h1>Pedidos Activos</h1>
                 <span className="order-count">{activeOrders.length}</span>
             </div>
-            
             {activeOrders.length === 0 ? (
                 <p>¡No hay pedidos pendientes! Buen trabajo.</p>
             ) : (
@@ -84,26 +78,31 @@ function OrderStatusPage() {
                                 <ul>
                                     {order.productos?.map((prod, index) => (
                                         <li key={index}>
-                                            <span><strong className="item-quantity">{prod.cantidad}x</strong> {prod.nombre}</span>
+                                            <span>
+                                                <strong className="item-quantity">{prod.cantidad}x</strong> 
+                                                {prod.nombre}
+                                                {/* ¡NUEVO! Muestra la variación si existe */}
+                                                {prod.nombre_variacion && <span className="item-variation">({prod.nombre_variacion})</span>}
+                                            </span>
                                         </li>
                                     ))}
                                 </ul>
-
                                 <h4>Entrega:</h4>
                                 <p>Mz: {order.direccion_mz}, Villa: {order.direccion_villa}</p>
+                                {order.observaciones && (<><h4>Observaciones:</h4><p>{order.observaciones}</p></>)}
                                 
-                                {order.observaciones && (
-                                    <>
-                                        <h4>Observaciones:</h4>
-                                        <p>{order.observaciones}</p>
-                                    </>
-                                )}
+                                {/* ¡NUEVO! Sección para el total y la forma de pago */}
+                                <div className="ticket-payment-summary">
+                                    <div className="total">
+                                        Total: ${parseFloat(order.total).toFixed(2)}
+                                    </div>
+                                    <div className="payment-method">
+                                        Pagado con: {order.pagos?.map(p => p.cuenta).join(', ') || 'N/A'}
+                                    </div>
+                                </div>
                             </div>
                             <div className="ticket-footer">
-                                <button
-                                    className="finalize-button"
-                                    onClick={() => handleFinalizeOrder(order.id)}
-                                >
+                                <button className="finalize-button" onClick={() => handleFinalizeOrder(order.id)}>
                                     Finalizar y Despachar
                                 </button>
                             </div>
