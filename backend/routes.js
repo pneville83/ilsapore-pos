@@ -87,17 +87,10 @@ router.get('/productos/disponibles', async (req, res) => { try { const productos
 router.post('/productos', async (req, res) => { const { nombre, precio, categoria, disponible, variaciones } = req.body; const client = await db.getClient(); try { await client.query('BEGIN'); const productoQuery = `INSERT INTO productos (nombre, precio, categoria, disponible) VALUES ($1, $2, $3, $4) RETURNING *;`; const productoResult = await client.query(productoQuery, [nombre, precio || null, categoria, disponible]); const nuevoProducto = productoResult.rows[0]; if (variaciones && variaciones.length > 0) { const variacionQuery = `INSERT INTO variaciones_producto (producto_id, nombre_variacion, precio) VALUES ($1, $2, $3);`; for (const v of variaciones) { if(v.nombre_variacion && v.precio) { await client.query(variacionQuery, [nuevoProducto.id, v.nombre_variacion, v.precio]); } } } await client.query('COMMIT'); res.status(201).json(nuevoProducto); } catch (err) { await client.query('ROLLBACK'); console.error('Error al crear producto:', err); res.status(500).send('Error en el servidor'); } finally { client.release(); } });
 router.put('/productos/:id', async (req, res) => { const { id } = req.params; const { nombre, precio, categoria, disponible, variaciones } = req.body; const client = await db.getClient(); try { await client.query('BEGIN'); const productoQuery = `UPDATE productos SET nombre = $1, precio = $2, categoria = $3, disponible = $4 WHERE id = $5 RETURNING *;`; await client.query(productoQuery, [nombre, precio || null, categoria, disponible, id]); await client.query('DELETE FROM variaciones_producto WHERE producto_id = $1;', [id]); if (variaciones && variaciones.length > 0) { const variacionQuery = `INSERT INTO variaciones_producto (producto_id, nombre_variacion, precio) VALUES ($1, $2, $3);`; for (const v of variaciones) { if(v.nombre_variacion && v.precio) { await client.query(variacionQuery, [id, v.nombre_variacion, v.precio]); } } } await client.query('COMMIT'); res.json({ message: 'Producto actualizado' }); } catch (err) { await client.query('ROLLBACK'); console.error('Error al actualizar producto:', err); res.status(500).send('Error en el servidor'); } finally { client.release(); } });
 
-// --- RUTAS DE FINANZAS (CON CRUD COMPLETO Y LÓGICA DE CANCELACIÓN) ---
+// --- RUTAS DE FINANZAS ---
 router.get('/finanzas/saldos', async (req, res) => { try { const query = `SELECT cuenta, COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE -monto END), 0) as balance FROM transacciones GROUP BY cuenta;`; const { rows } = await db.query(query); const saldos = { 'Efectivo': { balance: 0 }, 'Transferencia': { balance: 0 }, 'Tarjeta': { balance: 0 } }; rows.forEach(row => { if (saldos[row.cuenta]) { saldos[row.cuenta].balance = parseFloat(row.balance); } }); res.json(saldos); } catch (err) { console.error('Error al obtener saldos:', err); res.status(500).send('Error en el servidor'); } });
 router.get('/finanzas/historial', async (req, res) => { try { const query = `SELECT * FROM transacciones ORDER BY fecha DESC;`; const { rows } = await db.query(query); res.json(rows); } catch (err) { console.error('Error al obtener historial:', err); res.status(500).send('Error en el servidor'); } });
-router.post('/finanzas/transaccion', async (req, res) => {
-    const { descripcion, monto, cuenta, tipo = 'Egreso' } = req.body;
-    try {
-        const query = `INSERT INTO transacciones (descripcion, tipo, cuenta, monto) VALUES ($1, $2, $3, $4) RETURNING *;`;
-        const { rows } = await db.query(query, [descripcion, tipo, cuenta, monto]);
-        res.status(201).json(rows[0]);
-    } catch (err) { console.error('Error al crear transacción:', err); res.status(500).send('Error en el servidor'); }
-});
+router.post('/finanzas/transaccion', async (req, res) => { const { descripcion, monto, cuenta, tipo = 'Egreso' } = req.body; try { const query = `INSERT INTO transacciones (descripcion, tipo, cuenta, monto) VALUES ($1, $2, $3, $4) RETURNING *;`; const { rows } = await db.query(query, [descripcion, tipo, cuenta, monto]); res.status(201).json(rows[0]); } catch (err) { console.error('Error al crear transacción:', err); res.status(500).send('Error en el servidor'); } });
 router.put('/finanzas/transaccion/:id', async (req, res) => {
     const { id } = req.params;
     const { descripcion, monto, cuenta } = req.body;
@@ -114,54 +107,75 @@ router.delete('/finanzas/transaccion/:id', async (req, res) => {
     try {
         await client.query('BEGIN');
         const transaccionRes = await client.query('SELECT tipo, pedido_id FROM transacciones WHERE id = $1', [id]);
-        if (transaccionRes.rows.length === 0) {
-            await client.query('ROLLBACK');
-            return res.status(404).send('Transacción no encontrada');
-        }
+        if (transaccionRes.rows.length === 0) { await client.query('ROLLBACK'); return res.status(404).send('Transacción no encontrada'); }
         const { tipo, pedido_id } = transaccionRes.rows[0];
-
         if (tipo === 'Ingreso' && pedido_id) {
-            console.log(`Cancelando pedido completo #${pedido_id} asociado a la transacción #${id}`);
             await client.query('DELETE FROM transacciones WHERE pedido_id = $1', [pedido_id]);
             await client.query('DELETE FROM pedidos WHERE id = $1', [pedido_id]);
         } else {
-            console.log(`Eliminando transacción simple #${id}`);
             await client.query('DELETE FROM transacciones WHERE id = $1', [id]);
         }
         await client.query('COMMIT');
         res.status(204).send();
-    } catch (err) {
-        await client.query('ROLLBACK');
-        console.error('Error al eliminar transacción:', err);
-        res.status(500).send('Error en el servidor');
-    } finally {
-        client.release();
-    }
+    } catch (err) { await client.query('ROLLBACK'); console.error('Error al eliminar transacción:', err); res.status(500).send('Error en el servidor'); } finally { client.release(); }
 });
 
-// --- RUTAS DE REPORTES ---
+// --- RUTAS DE REPORTES (CON LÓGICA DE ZONA HORARIA CORREGIDA Y UNIFICADA) ---
 router.get('/reportes/cierre-caja', async (req, res) => {
     const { fecha_inicio, fecha_fin } = req.query;
     try {
-        const query = `SELECT cuenta, COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE 0 END), 0) as ingresos, COALESCE(SUM(CASE WHEN tipo = 'Egreso' THEN monto ELSE 0 END), 0) as gastos FROM transacciones WHERE (fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date GROUP BY cuenta;`;
+        const query = `
+            SELECT 
+                cuenta,
+                COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE 0 END), 0) as ingresos,
+                COALESCE(SUM(CASE WHEN tipo = 'Egreso' THEN monto ELSE 0 END), 0) as gastos
+            FROM transacciones
+            WHERE (fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
+            GROUP BY cuenta;
+        `;
         const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
         const resultado = { 'Efectivo': { ingresos: 0, gastos: 0, balance: 0 }, 'Transferencia': { ingresos: 0, gastos: 0, balance: 0 }, 'Tarjeta': { ingresos: 0, gastos: 0, balance: 0 } };
         rows.forEach(row => { if (resultado[row.cuenta]) { resultado[row.cuenta].ingresos = parseFloat(row.ingresos); resultado[row.cuenta].gastos = parseFloat(row.gastos); resultado[row.cuenta].balance = parseFloat(row.ingresos) - parseFloat(row.gastos); } });
         res.json(resultado);
     } catch (err) { console.error('Error generando cierre de caja:', err); res.status(500).send('Error en el servidor'); }
 });
+
 router.get('/reportes/productos-vendidos', async (req, res) => {
     const { fecha_inicio, fecha_fin } = req.query;
     try {
-        const query = `SELECT p.nombre, SUM(dp.cantidad) as total_vendido, SUM(dp.cantidad * dp.precio_unitario) as ingresos_generados FROM productos p JOIN detalles_pedido dp ON p.id = dp.producto_id JOIN pedidos ped ON dp.pedido_id = ped.id WHERE (ped.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date GROUP BY p.nombre ORDER BY total_vendido DESC;`;
+        const query = `
+            SELECT 
+                p.nombre, 
+                SUM(dp.cantidad) as total_vendido,
+                SUM(t.monto) as ingresos_generados
+            FROM productos p 
+            JOIN detalles_pedido dp ON p.id = dp.producto_id 
+            JOIN pedidos ped ON dp.pedido_id = ped.id
+            JOIN transacciones t ON ped.id = t.pedido_id AND t.tipo = 'Ingreso'
+            WHERE (ped.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
+            GROUP BY p.nombre
+            ORDER BY total_vendido DESC;
+        `;
         const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
         res.json(rows);
     } catch (err) { console.error('Error generando reporte de productos:', err); res.status(500).send('Error en el servidor'); }
 });
+
 router.get('/reportes/direcciones', async (req, res) => {
     const { fecha_inicio, fecha_fin } = req.query;
     try {
-        const query = `SELECT direccion_mz, direccion_villa, COUNT(id) as numero_pedidos, SUM(total) as total_consumido FROM pedidos WHERE (fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date GROUP BY direccion_mz, direccion_villa ORDER BY total_consumido DESC;`;
+        const query = `
+            SELECT 
+                ped.direccion_mz, 
+                ped.direccion_villa, 
+                COUNT(DISTINCT ped.id) as numero_pedidos,
+                SUM(t.monto) as total_consumido
+            FROM pedidos ped
+            JOIN transacciones t ON ped.id = t.pedido_id AND t.tipo = 'Ingreso'
+            WHERE (ped.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date
+            GROUP BY ped.direccion_mz, ped.direccion_villa 
+            ORDER BY total_consumido DESC;
+        `;
         const { rows } = await db.query(query, [fecha_inicio, fecha_fin, TIMEZONE]);
         res.json(rows);
     } catch (err) { console.error('Error generando reporte por dirección:', err); res.status(500).send('Error en el servidor'); }
