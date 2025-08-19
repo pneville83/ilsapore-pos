@@ -150,7 +150,7 @@ module.exports = function(router) {
         try { const { rows } = await db.query('SELECT id, nombre FROM ubicaciones ORDER BY nombre ASC;'); res.json(rows); } catch (err) { console.error('Error al obtener ubicaciones:', err); res.status(500).send('Error en el servidor.'); }
     });
     
-    // --- RUTAS DE FINANZAS (COMPLETAS) ---
+    // --- RUTAS DE FINANZAS ---
     router.get('/finanzas/saldos', async (req, res) => {
         const { rol, ubicacion_id } = req.auth;
         const ubicacionFiltro = (rol === 'superadmin' && req.query.ubicacion_id) ? req.query.ubicacion_id : ubicacion_id;
@@ -232,13 +232,11 @@ module.exports = function(router) {
                 getTransParams = [id, ubicacion_id];
             }
             const transaccionRes = await client.query(getTransQuery, getTransParams);
-
             if (transaccionRes.rows.length === 0) {
                 await client.query('ROLLBACK');
                 return res.status(404).send('Transacción no encontrada o sin permisos para eliminar.');
             }
             const { tipo, pedido_id } = transaccionRes.rows[0];
-
             if (tipo === 'Ingreso' && pedido_id) {
                 await client.query('DELETE FROM transacciones WHERE pedido_id = $1', [pedido_id]);
                 await client.query('DELETE FROM pedidos WHERE id = $1', [pedido_id]);
@@ -256,12 +254,10 @@ module.exports = function(router) {
         }
     });
 
-    // --- RUTAS DE REPORTES (CON LÓGICA DE ZONA HORARIA Y FILTRO DE UBICACIÓN COMPLETOS) ---
+    // --- RUTAS DE REPORTES ---
     const buildReportWhereClause = (rol, ubicacion_id, ubicacionFiltro, aliasTabla) => {
-        // Usamos $1 y $2 para los timestamps, el resto empieza en $3
-        let whereClauses = [`${aliasTabla}.fecha >= $1 AND ${aliasTabla}.fecha < $2`];
-        let params = [];
-        
+        let whereClauses = [`(${aliasTabla}.fecha AT TIME ZONE $3)::date BETWEEN $1::date AND $2::date`];
+        let params = [TIMEZONE];
         if (rol === 'superadmin' && ubicacionFiltro) {
             whereClauses.push(`${aliasTabla}.ubicacion_id = $${params.length + 3}`);
             params.push(ubicacionFiltro);
@@ -269,7 +265,6 @@ module.exports = function(router) {
             whereClauses.push(`${aliasTabla}.ubicacion_id = $${params.length + 3}`);
             params.push(ubicacion_id);
         }
-        
         return { whereClause: whereClauses.join(' AND '), params };
     };
     router.get('/reportes/cierre-caja', async (req, res) => {
@@ -284,16 +279,34 @@ module.exports = function(router) {
             res.json(resultado);
         } catch (err) { console.error('Error generando cierre de caja:', err); res.status(500).send('Error en el servidor'); }
     });
+
+    // --- RUTA DE PRODUCTOS VENDIDOS (CON LA CORRECCIÓN) ---
     router.get('/reportes/productos-vendidos', async (req, res) => {
         const { rol, ubicacion_id } = req.auth;
         const { fecha_inicio, fecha_fin, ubicacion_id: ubicacionQuery } = req.query;
         const { whereClause, params } = buildReportWhereClause(rol, ubicacion_id, ubicacionQuery, 'ped');
         try {
-            const query = `SELECT p.nombre, SUM(dp.cantidad) as total_vendido, SUM(t.monto) as ingresos_generados FROM productos p JOIN detalles_pedido dp ON p.id = dp.producto_id JOIN pedidos ped ON dp.pedido_id = ped.id JOIN transacciones t ON ped.id = t.pedido_id AND t.tipo = 'Ingreso' WHERE ${whereClause} GROUP BY p.nombre ORDER BY total_vendido DESC;`;
+            // ¡CONSULTA CORREGIDA!
+            const query = `
+                SELECT 
+                    p.nombre, 
+                    SUM(dp.cantidad) as total_vendido,
+                    SUM(dp.cantidad * dp.precio_unitario) as ingresos_generados
+                FROM productos p 
+                JOIN detalles_pedido dp ON p.id = dp.producto_id 
+                JOIN pedidos ped ON dp.pedido_id = ped.id 
+                WHERE ${whereClause} 
+                GROUP BY p.nombre 
+                ORDER BY ingresos_generados DESC;
+            `;
             const { rows } = await db.query(query, [fecha_inicio, fecha_fin, ...params]);
             res.json(rows);
-        } catch (err) { console.error('Error generando reporte de productos:', err); res.status(500).send('Error en el servidor'); }
+        } catch (err) { 
+            console.error('Error generando reporte de productos:', err); 
+            res.status(500).send('Error en el servidor'); 
+        }
     });
+
     router.get('/reportes/direcciones', async (req, res) => {
         const { rol, ubicacion_id } = req.auth;
         const { fecha_inicio, fecha_fin, ubicacion_id: ubicacionQuery } = req.query;
