@@ -2,7 +2,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import './FinancePage.css';
-// Ya no se importa 'useLocation'
+// Ya no necesitamos 'useLocation' porque la lógica del filtro ahora es automática en api.js
+// import { useLocation } from '../context/LocationContext';
 
 function FinancePage() {
     const [saldos, setSaldos] = useState({ 'Efectivo': { balance: 0 }, 'Transferencia': { balance: 0 }, 'Tarjeta': { balance: 0 } });
@@ -19,6 +20,7 @@ function FinancePage() {
     const fetchData = useCallback(async () => {
         try {
             setStatusMessage('Cargando datos...');
+            // Las llamadas ya no necesitan el filtro, el interceptor de api.js lo añade
             const [saldosRes, historialRes] = await Promise.all([
                 api.getSaldos(), 
                 api.getHistorialTransacciones()
@@ -39,8 +41,8 @@ function FinancePage() {
     const handleSubmitEgreso = async (e) => {
         e.preventDefault();
         if (!descripcion || !monto) return alert('Por favor, complete todos los campos.');
-        
         try {
+            // La lógica del filtro ahora es automática en api.js
             await api.crearTransaccion({ descripcion, monto, cuenta, tipo: 'Egreso' });
             setStatusMessage('Egreso registrado con éxito.');
             setDescripcion(''); setMonto('');
@@ -113,28 +115,48 @@ function FinancePage() {
                 <div className="finance-layout">
                     <div className="new-expense-panel">
                         <h2>Registrar Egreso/Gasto</h2>
-                        <form onSubmit={handleSubmitEgreso}>
-                            <label>Descripción:</label><textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required rows="3" />
-                            <label>Monto ($):</label><input type="number" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} required />
-                            <label>Pagar desde la cuenta de:</label>
-                            <select value={cuenta} onChange={(e) => setCuenta(e.target.value)}>
-                                <option value="Efectivo">Efectivo</option>
-                                <option value="Transferencia">Transferencia</option>
-                            </select>
-                            <button type="submit" style={{width: '100%', marginTop: '10px'}}>Guardar Egreso</button>
-                        </form>
+                        <form onSubmit={handleSubmitEgreso}><label>Descripción:</label><textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required rows="3" /><label>Monto ($):</label><input type="number" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} required /><label>Pagar desde la cuenta de:</label><select value={cuenta} onChange={(e) => setCuenta(e.target.value)}><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option></select><button type="submit" style={{width: '100%', marginTop: '10px'}}>Guardar Egreso</button></form>
                         {statusMessage && <p>{statusMessage}</p>}
                     </div>
                     <div className="transaction-history-panel">
                         <h2>Historial de Transacciones</h2>
                         <div className="table-container">
                             <table>
-                                <thead><tr><th>Fecha</th><th>Descripción</th><th>Cuenta</th><th>Monto</th><th>Acciones</th></tr></thead>
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Descripción</th>
+                                        {/* --- ¡NUEVA COLUMNA! --- */}
+                                        <th>Detalles del Pedido</th>
+                                        <th>Cuenta</th>
+                                        <th>Monto</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
                                 <tbody>
                                     {historial.map(t => (
                                         <tr key={t.id}>
                                             <td>{new Date(t.fecha).toLocaleString()}</td>
                                             <td>{t.descripcion}</td>
+                                            {/* --- ¡NUEVA CELDA CON LÓGICA! --- */}
+                                            <td>
+                                                {t.productos && t.productos.length > 0 ? (
+                                                    <div className="transaction-details">
+                                                        <ul className="product-list">
+                                                            {t.productos.map((prod, index) => (
+                                                                <li key={index}>
+                                                                    {prod.cantidad}x {prod.nombre} {prod.nombre_variacion ? `(${prod.nombre_variacion})` : ''}
+                                                                </li>
+                                                            ))}
+                                                        </ul>
+                                                        <div className="address-detail">
+                                                            Mz: {t.direccion_mz}, Villa: {t.direccion_villa}
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <span>-</span>
+                                                )}
+                                            </td>
                                             <td>{t.cuenta}</td>
                                             <td className={`amount-cell ${t.tipo === 'Ingreso' ? 'income' : 'expense'}`}>{t.tipo === 'Ingreso' ? '+' : '-'} {formatCurrency(t.monto)}</td>
                                             <td className="action-cell">

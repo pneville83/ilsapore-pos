@@ -1,4 +1,5 @@
 /* frontend/src/pages/FinancePage.css */
+
 .finance-header { display: flex; flex-wrap: wrap; gap: 20px; margin-bottom: 30px; }
 .balance-card { flex: 1; min-width: 200px; background-color: var(--surface-color); padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
 .balance-card h3 { margin: 0 0 10px 0; font-size: 1rem; color: var(--secondary-color); }
@@ -20,3 +21,21 @@
 .edit-modal { background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 500px; }
 .edit-modal h2 { margin-top: 0; }
 .edit-modal-buttons { display: flex; gap: 10px; margin-top: 20px; }
+
+/* --- ¡NUEVO! Estilos para la columna de detalles del pedido --- */
+.transaction-details {
+    font-size: 0.85rem;
+}
+.transaction-details .product-list {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+.transaction-details .product-list li {
+    white-space: nowrap; /* Evita que el texto del producto se parta en varias líneas */
+}
+.transaction-details .address-detail {
+    margin-top: 5px;
+    font-style: italic;
+    color: var(--secondary-color);
+}
