@@ -171,20 +171,38 @@ router.get('/finanzas/saldos', async (req, res) => {
 });
 router.get('/finanzas/historial', async (req, res) => {
     const { rol, ubicacion_id } = req.auth;
-    const ubicacionFiltro = (rol === 'superadmin' && req.query.ubicacion_id) ? req.query.ubicacion_id : ubicacion_id;
-    try {
-        let whereClause = "";
-        let params = [];
+    const { fecha_inicio, fecha_fin, cuenta, ubicacion_id: ubicacionQuery } = req.query;
+    const ubicacionFiltro = (rol === 'superadmin' && ubicacionQuery) ? ubicacionQuery : ubicacion_id;
 
+    try {
+        let whereClauses = [];
+        let params = [];
+        let paramIndex = 1;
+
+        // Filtro de Ubicación
         if (rol === 'superadmin' && ubicacionFiltro) {
-            whereClause = `WHERE t.ubicacion_id = $1`;
+            whereClauses.push(`t.ubicacion_id = $${paramIndex++}`);
             params.push(ubicacionFiltro);
         } else if (rol !== 'superadmin' && ubicacion_id) {
-            whereClause = `WHERE t.ubicacion_id = $1`;
+            whereClauses.push(`t.ubicacion_id = $${paramIndex++}`);
             params.push(ubicacion_id);
         }
 
-        // ¡CONSULTA MEJORADA!
+        // Filtro de Fecha
+        if (fecha_inicio && fecha_fin) {
+            // Se usa el método de intervalo UTC que ya validamos que funciona
+            whereClauses.push(`t.fecha >= $${paramIndex++} AND t.fecha < $${paramIndex++}`);
+            params.push(fecha_inicio, fecha_fin);
+        }
+
+        // Filtro de Cuenta
+        if (cuenta) {
+            whereClauses.push(`t.cuenta = $${paramIndex++}`);
+            params.push(cuenta);
+        }
+
+        const whereString = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
+        
         const query = `
             SELECT 
                 t.id, t.fecha, t.descripcion, t.tipo, t.cuenta, t.monto, t.pedido_id,
@@ -202,7 +220,7 @@ router.get('/finanzas/historial', async (req, res) => {
                 WHERE dp.pedido_id = t.pedido_id) as productos
             FROM transacciones t
             LEFT JOIN pedidos p ON t.pedido_id = p.id
-            ${whereClause}
+            ${whereString}
             ORDER BY t.fecha DESC;
         `;
 

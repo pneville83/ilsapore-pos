@@ -17,12 +17,32 @@
 .transaction-history-panel table .action-cell { text-align: right; white-space: nowrap; }
 .transaction-history-panel table .action-cell button { padding: 5px 8px; font-size: 0.8rem; margin-left: 5px; }
 .transaction-history-panel table .action-cell button.edit-btn { background-color: var(--secondary-color); }
-.edit-modal-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(0, 0, 0, 0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-.edit-modal { background: white; padding: 30px; border-radius: 8px; width: 90%; max-width: 500px; }
+
+.edit-modal-overlay { 
+    position: fixed; 
+    top: 0; 
+    left: 0; 
+    right: 0; 
+    bottom: 0; 
+    background-color: rgba(0, 0, 0, 0.6); 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    z-index: 1000; 
+}
+.edit-modal { 
+    background: white; 
+    padding: 30px; 
+    border-radius: 8px; 
+    width: 90%; 
+    max-width: 500px; 
+    /* --- ¡CORRECCIÓN! --- */
+    /* Aseguramos que el modal esté en una capa superior al overlay */
+    z-index: 1001; 
+}
 .edit-modal h2 { margin-top: 0; }
 .edit-modal-buttons { display: flex; gap: 10px; margin-top: 20px; }
 
-/* --- ¡NUEVO! Estilos para la columna de detalles del pedido --- */
 .transaction-details {
     font-size: 0.85rem;
 }
@@ -32,10 +52,36 @@
     margin: 0;
 }
 .transaction-details .product-list li {
-    white-space: nowrap; /* Evita que el texto del producto se parta en varias líneas */
+    white-space: nowrap;
 }
 .transaction-details .address-detail {
     margin-top: 5px;
     font-style: italic;
     color: var(--secondary-color);
+}
+
+.finance-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-end;
+    background-color: var(--surface-color);
+    padding: 15px 20px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+.finance-filters > div {
+    display: flex;
+    flex-direction: column;
+}
+.finance-filters label {
+    margin-bottom: 5px;
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+.finance-filters .react-datepicker-wrapper input,
+.finance-filters select {
+    margin-bottom: 0;
+    padding: 8px;
 }

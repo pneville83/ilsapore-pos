@@ -33,10 +33,6 @@ apiClient.interceptors.request.use(
 const api = {
   login: (username, password) => axios.post(`${API_URL}/login`, { username, password }),
   
-  // --- RUTAS PROTEGIDAS (SIMPLIFICADAS) ---
-  // Ahora ninguna de estas funciones necesita recibir 'ubicacionId'.
-  // El interceptor se encarga de todo de forma automática y transparente.
-  
   // Productos
   getProductosDisponibles: () => apiClient.get('/productos/disponibles'),
   getProductosTodos: () => apiClient.get('/productos/todos'),
@@ -50,7 +46,8 @@ const api = {
 
   // Finanzas
   getSaldos: () => apiClient.get('/finanzas/saldos'),
-  getHistorialTransacciones: () => apiClient.get('/finanzas/historial'),
+  // --- ¡MODIFICACIÓN! Acepta un objeto 'filtros' ---
+  getHistorialTransacciones: (filtros) => apiClient.get('/finanzas/historial', { params: filtros }),
   crearTransaccion: (transaccionData) => apiClient.post('/finanzas/transaccion', transaccionData),
   actualizarTransaccion: (id, transaccionData) => apiClient.put(`/finanzas/transaccion/${id}`, transaccionData),
   eliminarTransaccion: (id) => apiClient.delete(`/finanzas/transaccion/${id}`),
