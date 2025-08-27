@@ -1,0 +1,9 @@
+{
+  "bancos_coincidentes": {
+    "pichincha": "Banco Pichincha\nCuenta de Ahorros\n# 2206671784\nA nombre de: Yoleida Hernandez\nC.I. 0963065214",
+    "guayaquil": "Banco Guayaquil\nCuenta de Ahorros\n# 0043125872\nA nombre de: Yoleida Irene Hernández Gómez\nC.I. 0963065214",
+    "produbanco": "Produbanco\nCuenta de Ahorros\n# 18005999337\nA nombre de: Yoleida Hernandez\nC.I. 0963065214",
+    "pacifico": "Banco del Pacífico\nCuenta de Ahorros\n# 1060530887\nA nombre de: Irene Hernández\nC.I. 0963065214"
+  },
+  "cuenta_por_defecto": "Banco Guayaquil\nCuenta de Ahorros\n# 0043125872\nA nombre de: Yoleida Irene Hernández Gómez\nC.I. 0963065214\n\n_Aceptamos transferencias interbancarias a esta cuenta._"
+}

@@ -1,0 +1,31 @@
+# Directorios de dependencias
+node_modules/
+
+# Variables de entorno
+.env
+
+# Archivos de sesión de WhatsApp-web.js
+# IMPORTANTE:
+# Si estás usando Render's Persistent Disks para guardar la sesión,
+# entonces DEBES descomentar la siguiente línea para que no se suban al Git.
+#
+# Si NO estás usando Render's Persistent Disks (para la primera configuración)
+# y quieres subir la sesión generada localmente al Git, ENTONCES DEJA LA LÍNEA COMENTADA.
+# Por defecto, la recomendación inicial es NO comentar para que la sesión se suba al repo.
+#
+# .wwebjs_auth/
+
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+
+# Archivos generados por el OS
+.DS_Store
+Thumbs.db
+
+# Ignorar archivos temporales o de editor
+*.tmp
+*.bak
+*.swp
