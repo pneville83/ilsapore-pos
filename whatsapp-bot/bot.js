@@ -221,11 +221,11 @@ client.on('message', async (message) => {
             const productoSeleccionado = convoState.productosMostrados[num - 1];
             convoState.productoTemporal = productoSeleccionado;
             if (productoSeleccionado.variaciones && productoSeleccionado.variaciones.length > 0) {
-                let variationMessage = `*${productoSeleccionado.nombre}* tiene varios tamaños:\n\n`;
+                let variationMessage = `*${productoSeleccionado.nombre}* tiene las siguientes *opciones*:\n\n`;
                 productoSeleccionado.variaciones.forEach((v, index) => {
                     variationMessage += `${index + 1}. *${v.nombre_variacion}* - *$${parseFloat(v.precio).toFixed(2)}*\n`;
                 });
-                variationMessage += '\nPor favor, responde con el *número* del tamaño que deseas.';
+                variationMessage += '\nPor favor, responde con el *número* de la *opción* que deseas.';
                 await client.sendMessage(from, variationMessage);
                 convoState.estado = 'SELECCIONANDO_VARIACION';
             } else {
@@ -239,7 +239,7 @@ client.on('message', async (message) => {
             const num = parseInt(content);
             const variaciones = convoState.productoTemporal.variaciones;
             if (isNaN(num) || num <= 0 || num > variaciones.length) {
-                await client.sendMessage(from, 'Opción no válida. Por favor, elige un número de la lista de tamaños.');
+                await client.sendMessage(from, 'Opción no válida. Por favor, elige un número de la lista de *opciones*.');
                 break;
             }
             const variacionSeleccionada = variaciones[num - 1];
