@@ -320,13 +320,13 @@ client.on('message', async (message) => {
             const montoTexto = content.replace('$', '').trim();
             let montoPago;
             const totalPedido = convoState.carrito.reduce((sum, item) => sum + item.cantidad * parseFloat(item.precio_unitario), 0);
-            if (montoTexto.includes('exacto')) {
+            if (montoTexto.includes('exacto') || montoTexto.includes('completo')) {
                 montoPago = totalPedido;
             } else {
                 montoPago = parseFloat(montoTexto);
             }
             if (isNaN(montoPago) || montoPago < totalPedido) {
-                await client.sendMessage(from, `El monto no es válido o es menor al total de $${totalPedido.toFixed(2)}. Por favor, responde con un número mayor o igual, o con "pago exacto".`);
+                await client.sendMessage(from, `El monto no es válido o es menor al total de $${totalPedido.toFixed(2)}. Por favor, responde con un número mayor o igual, o con "exacto" o "completo".`);
                 break;
             }
             convoState.observaciones = `Cliente paga con $${montoPago.toFixed(2)}`;
