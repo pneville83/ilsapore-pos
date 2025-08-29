@@ -137,16 +137,25 @@ client.on('message', async (message) => {
     // --- LÓGICA NORMAL DEL BOT PARA CLIENTES ---
     let convoState = conversations[from] || { estado: 'INICIO', carrito: [] };
 
-    // --- MANEJO DE COMANDOS GLOBALES ---
-    if (content === 'hola' || content === 'cancelar') {
+    // --- MANEJO DE COMANDOS GLOBALES DE INICIO/REINICIO ---
+    const resetKeywords = ['hola', 'cancelar', 'noches', 'pedido', 'quiero', 'veci', 'inicio', 'buenas']; // Palabras clave para reiniciar la conversación
+    
+    // Antiguo: if (resetKeywords.includes(content)) {
+    // Nuevo:
+    const shouldResetConversation = resetKeywords.some(keyword => content.includes(keyword));
+
+    if (shouldResetConversation) {
         const welcomeMessage = '¡Hola! 👋 Bienvenido a Il Sapore.\n\nEscribe *menu* para ver nuestras opciones y empezar tu pedido. 🍔';
         await client.sendMessage(from, welcomeMessage);
-        convoState = { estado: 'INICIO', carrito: [] }; // Reiniciamos la conversación
+        convoState = { estado: 'INICIO', carrito: [] }; // Reiniciamos completamente la conversación y el carrito
         conversations[from] = convoState;
-        return;
+        return; // Salimos después de enviar el mensaje de bienvenida y reiniciar
     }
 
-    if (content === 'menu') {
+    // --- MANEJO DEL COMANDO 'menu' (se mantiene como estaba) ---
+    // Antiguo: if (content === 'menu') {
+    // Nuevo:
+    if (content.includes('menu')) { // Ahora busca 'menu' dentro de la frase
         try {
             const response = await apiClient.get('/productos/disponibles');
             const productos = response.data;
@@ -164,6 +173,7 @@ client.on('message', async (message) => {
         conversations[from] = convoState;
         return;
     }
+    
 
     if (content === 'finalizar' && convoState.carrito && convoState.carrito.length > 0) {
         convoState.estado = 'PIDIENDO_DIRECCION_MZ';
