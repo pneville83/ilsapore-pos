@@ -3,10 +3,11 @@
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 const fs = require('fs');
+const path = require('path');
 const axios = require('axios');
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4 } = require('uuid'); // Mantenemos uuidv4 por si se necesita para algo, pero no para clientTransactionId
 const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config(); // Cargar variables de entorno desde .env
+require('dotenv').config();
 
 // --- Configuración desde .env ---
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -17,10 +18,25 @@ const POS_USERNAME = process.env.POS_USERNAME;
 const POS_PASSWORD = process.env.POS_PASSWORD;
 const NUMERO_GESTION_CUENTAS = process.env.NUMERO_GESTION_CUENTAS;
 
+// PayPhone API - ¡Variables re-integradas!
+const PAYPHONE_API_KEY = process.env.PAYPHONE_API_KEY;
+const PAYPHONE_STORE_ID = process.env.PAYPHONE_STORE_ID;
+const PAYPHONE_CLIENT_ID = process.env.PAYPHONE_CLIENT_ID; // Tu "Id Cliente" de PayPhone
+const PAYPHONE_GENERATE_LINK_URL = process.env.PAYPHONE_GENERATE_LINK_URL;
+const PAYPHONE_CHECK_STATUS_URL = process.env.PAYPHONE_CHECK_STATUS_URL; // Se mantiene por si se necesita para depuración o futuros flujos
+
+// Estas URLs de redirección (RESPONSE_URL, CANCELLATION_URL)
+// se mantienen en .env porque tu backend las usará para las redirecciones del cliente,
+// pero no se envían en el payload para el endpoint /api/Links del bot según el ejemplo PHP.
+const PAYPHONE_RESPONSE_URL = process.env.PAYPHONE_RESPONSE_URL; 
+const PAYPHONE_CANCELLATION_URL = process.env.PAYPHONE_CANCELLATION_URL;
+
+
 // --- Verificaciones de configuración críticas ---
-if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !POS_API_BASE_URL || !POS_LOGIN_ENDPOINT || !POS_USERNAME || !POS_PASSWORD || !NUMERO_GESTION_CUENTAS) {
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY || !POS_API_BASE_URL || !POS_LOGIN_ENDPOINT || !POS_USERNAME || !POS_PASSWORD || !NUMERO_GESTION_CUENTAS ||
+    !PAYPHONE_API_KEY || !PAYPHONE_STORE_ID || !PAYPHONE_CLIENT_ID || !PAYPHONE_GENERATE_LINK_URL || !PAYPHONE_CHECK_STATUS_URL || !PAYPHONE_RESPONSE_URL || !PAYPHONE_CANCELLATION_URL) {
     console.error("ERROR: Faltan variables de entorno cruciales. Por favor, verifica tu archivo .env");
-    process.exit(1); // Detener el bot si la configuración es incompleta
+    process.exit(1);
 }
 
 // --- Inicialización de Supabase Client ---
@@ -29,7 +45,6 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 // --- Manejo Dinámico del AUTH_TOKEN para Il Sapore POS API ---
 let currentAuthToken = null;
 
-// Función para obtener/refrescar el token
 async function loginAndGetToken() {
     try {
         console.log('Intentando obtener nuevo token de autenticación para Il Sapore POS...');
@@ -46,17 +61,15 @@ async function loginAndGetToken() {
     }
 }
 
-// Inicializar Axios con un interceptor para manejar el token y el refresco
 const apiClient = axios.create({
     baseURL: POS_API_BASE_URL,
     headers: { 'Content-Type': 'application/json' }
 });
 
-// Interceptor para añadir el token a las solicitudes
 apiClient.interceptors.request.use(
     async config => {
         if (!currentAuthToken) {
-            await loginAndGetToken(); // Intentar obtener el token si no existe
+            await loginAndGetToken();
         }
         config.headers['Authorization'] = `Bearer ${currentAuthToken}`;
         return config;
@@ -64,7 +77,6 @@ apiClient.interceptors.request.use(
     error => Promise.reject(error)
 );
 
-// Interceptor para refrescar el token en caso de 401 (Unauthorized)
 apiClient.interceptors.response.use(
     response => response,
     async error => {
@@ -75,20 +87,19 @@ apiClient.interceptors.response.use(
             try {
                 const newToken = await loginAndGetToken();
                 originalRequest.headers['Authorization'] = `Bearer ${newToken}`;
-                return apiClient(originalRequest); // Reintentar la solicitud original con el nuevo token
+                return apiClient(originalRequest);
             } catch (refreshError) {
                 console.error('Fallo al refrescar el token de Il Sapore POS:', refreshError.message);
-                return Promise.reject(refreshError); // Si falla el refresco, rechazar
+                return Promise.reject(refreshError);
             }
         }
         return Promise.reject(error);
     }
 );
 
-const conversations = {}; // Almacena el estado de las conversaciones con los clientes
+const conversations = {};
 
 // --- Cargamos los datos de los bancos al iniciar ---
-// Asumiendo que 'bancos.json' existe y es válido
 const datosBancarios = JSON.parse(fs.readFileSync('bancos.json', 'utf8'));
 
 const client = new Client({
@@ -100,68 +111,100 @@ client.on('qr', qr => qrcode.generate(qr, { small: true }));
 client.on('ready', async () => {
     console.log('✅ ¡El bot de Il Sapore está en línea!');
     try {
-        await loginAndGetToken(); // Obtener el token al iniciar el bot
+        await loginAndGetToken();
+        // --- SUSCRIPCIÓN A SUPABASE REALTIME PARA PAGOS PAYPHONE ---
+        supabase
+            .channel('pending_transfers')
+            .on('postgres_changes', { 
+                event: 'UPDATE', 
+                schema: 'public', 
+                table: 'pending_transfers',
+                filter: `status=in.(PAYPHONE_CONFIRMED,PAYPHONE_FAILED,PAYPHONE_ORDER_ERROR,PAYPHONE_REJECTED)` // Se añade PAYPHONE_REJECTED para que el bot reaccione a rechazos
+            }, async (payload) => {
+                const updatedTransfer = payload.new;
+                console.log('Supabase Realtime Update:', updatedTransfer);
+
+                const customerFrom = updatedTransfer.customer_whatsapp;
+                let convoState = conversations[customerFrom];
+                
+                if (convoState && convoState.estado === 'PENDIENTE_VERIFICACION_PAGO_PAYPHONE' && convoState.payphone_temp_id === updatedTransfer.id) {
+                    
+                    if (updatedTransfer.status === 'PAYPHONE_CONFIRMED' || updatedTransfer.status === 'PAYPHONE_ORDER_CREATED') {
+                        await processTransferConfirmation(updatedTransfer.id, true, true);
+                    } else if (updatedTransfer.status === 'PAYPHONE_FAILED' || updatedTransfer.status === 'PAYPHONE_REJECTED') {
+                        await processTransferConfirmation(updatedTransfer.id, false, true);
+                    } else if (updatedTransfer.status === 'PAYPHONE_ORDER_ERROR') {
+                         console.error(`ERROR CRÍTICO: Pago PayPhone ID ${updatedTransfer.id} confirmado pero falló la creación de orden POS. Cliente y gestión notificados.`);
+                         await client.sendMessage(customerFrom, `Tu pago con PayPhone ha sido procesado, pero tuvimos un problema técnico al confirmar tu pedido. Un agente se pondrá en contacto contigo para ayudarte. ¡Disculpa las molestias!`);
+                         await client.sendMessage(NUMERO_GESTION_CUENTAS, `⚠️ ALERTA: Pago PayPhone ID ${updatedTransfer.id} de ${customerFrom.replace('@c.us', '')} fue *confirmado*, pero la orden *NO SE CREÓ* en el POS. Revisar manualmente.`);
+                         conversations[customerFrom] = { estado: 'ASISTENCIA_HUMANA', carrito: [] };
+                    }
+                } else {
+                    console.log(`Ignorando actualización de PayPhone para ${customerFrom}, estado actual: ${convoState?.estado || 'N/A'}, ID de PayPhone: ${convoState?.payphone_temp_id || 'N/A'}`);
+                }
+            })
+            .subscribe();
+
+        console.log('✅ Suscripción a Supabase Realtime para pending_transfers activa.');
+
     } catch (error) {
-        console.error('No se pudo obtener el token de autenticación de Il Sapore POS al iniciar. Algunas funcionalidades podrían no operar.', error);
-        // Dependiendo de la criticidad, podrías decidir si el bot debe continuar o no.
-        // process.exit(1); // Descomentar para detener el bot si la autenticación inicial falla
+        console.error('No se pudo obtener el token de autenticación de Il Sapore POS al iniciar o configurar Realtime. Algunas funcionalidades podrían no operar.', error);
     }
 });
 
 client.on('message', async (message) => {
-    const from = message.from; // Número de WhatsApp del remitente
-    const content = message.body ? message.body.toLowerCase().trim() : ''; // Contenido del mensaje
+    const from = message.from;
+    const content = message.body ? message.body.toLowerCase().trim() : '';
 
-    // Para depuración
     console.log(`Mensaje de ${from}: "${content}" (Estado PREVIO: ${conversations[from]?.estado || 'INICIO'})`);
 
     // --- LÓGICA PARA EL NÚMERO DE GESTIÓN DE CUENTAS ---
     if (from === NUMERO_GESTION_CUENTAS) {
-        // Expresión regular para capturar el ID después de "confirmar " o "problema "
-        // y opcionalmente después de "TRF-"
-        const confirmMatch = content.match(/confirmar\s+(?:trf-)?([a-z0-9]{4})/); // Aseguramos 4 caracteres alfanuméricos
-        const problemMatch = content.match(/problema\s+(?:trf-)?([a-z0-9]{4})/); // Aseguramos 4 caracteres alfanuméricos
+        const confirmMatch = content.match(/confirmar\s+(?:trf-)?([a-z0-9]{4})/);
+        const problemMatch = content.match(/problema\s+(?:trf-)?([a-z0-9]{4})/);
 
         if (confirmMatch && confirmMatch[1]) {
-            const tempOrderId = confirmMatch[1].toUpperCase(); // Convertir a mayúsculas para consistencia
-            await processTransferConfirmation(tempOrderId, true); // true = confirmado
+            const tempOrderId = confirmMatch[1].toUpperCase();
+            await processTransferConfirmation(tempOrderId, true, false);
         } else if (problemMatch && problemMatch[1]) {
-            const tempOrderId = problemMatch[1].toUpperCase(); // Convertir a mayúsculas para consistencia
-            await processTransferConfirmation(tempOrderId, false); // false = con problema
+            const tempOrderId = problemMatch[1].toUpperCase();
+            await processTransferConfirmation(tempOrderId, false, false);
         } else {
             await client.sendMessage(from, 'Comando no reconocido. Usa "CONFIRMAR TRF-[ID]" o "PROBLEMA TRF-[ID]". El ID debe ser de 4 caracteres alfanuméricos.');
         }
-        return; // Detenemos el procesamiento para este mensaje, ya fue manejado por el equipo de cuentas
+        return;
     }
 
     // --- LÓGICA NORMAL DEL BOT PARA CLIENTES ---
     let convoState = conversations[from] || { estado: 'INICIO', carrito: [] };
 
     // --- MANEJO DE COMANDOS GLOBALES DE INICIO/REINICIO ---
-    const resetKeywords = ['hola', 'cancelar', 'noches', 'pedido', 'quiero', 'veci', 'inicio', 'buenas']; // Palabras clave para reiniciar la conversación
-    
-    // Antiguo: if (resetKeywords.includes(content)) {
-    // Nuevo:
+    const resetKeywords = ['hola', 'cancelar', 'hi', 'empezar', 'inicio', 'comenzar', 'veci', 'buenas', 'noches', 'pedido', 'quisiera'];
     const shouldResetConversation = resetKeywords.some(keyword => content.includes(keyword));
 
     if (shouldResetConversation) {
         const welcomeMessage = '¡Hola! 👋 Bienvenido a Il Sapore.\n\nEscribe *menu* para ver nuestras opciones y empezar tu pedido. 🍔';
         await client.sendMessage(from, welcomeMessage);
-        convoState = { estado: 'INICIO', carrito: [] }; // Reiniciamos completamente la conversación y el carrito
+        convoState = { estado: 'INICIO', carrito: [] };
         conversations[from] = convoState;
-        return; // Salimos después de enviar el mensaje de bienvenida y reiniciar
+        return;
     }
 
-    // --- MANEJO DEL COMANDO 'menu' (se mantiene como estaba) ---
-    // Antiguo: if (content === 'menu') {
-    // Nuevo:
-    if (content.includes('menu')) { // Ahora busca 'menu' dentro de la frase
+    // --- MANEJO DEL COMANDO 'menu' ---
+    if (content.includes('menu')) {
         try {
             const response = await apiClient.get('/productos/disponibles');
             const productos = response.data;
             const categoriasExcluidas = 'adicionales';
-            const categorias = [...new Set(productos.map(p => p.categoria))].filter(cat => !categoriasExcluidas.includes(cat.toLowerCase()));
-            convoState = { ...convoState, productosDisponibles: productos, categoriasDisponibles: categorias, estado: 'VIENDO_CATEGORIAS' };
+            let categorias = [...new Set(productos.map(p => p.categoria))].filter(cat => !categoriasExcluidas.includes(cat.toLowerCase()));
+            
+            convoState = { 
+                ...convoState, 
+                productosDisponibles: productos, 
+                categoriasDisponibles: categorias, 
+                estado: 'VIENDO_CATEGORIAS' 
+            };
+            
             let categoryMessage = '*Nuestro Menú por Categorías:*\n\n';
             categorias.forEach((cat, index) => { categoryMessage += `${index + 1}. *${cat}*\n`; });
             categoryMessage += '\nPor favor, responde con el *número* de la categoría que deseas ver.';
@@ -173,9 +216,8 @@ client.on('message', async (message) => {
         conversations[from] = convoState;
         return;
     }
-    
 
-    if (content === 'finalizar' && convoState.carrito && convoState.carrito.length > 0) {
+    if (content.includes('finalizar') && convoState.carrito && convoState.carrito.length > 0) {
         convoState.estado = 'PIDIENDO_DIRECCION_MZ';
         await client.sendMessage(from, '¡Perfecto! Para completar tu pedido, por favor, indícame el número de tu *manzana* (Mz).');
         conversations[from] = convoState;
@@ -191,9 +233,11 @@ client.on('message', async (message) => {
             if (!isNaN(num) && num > 0 && num <= categorias.length) {
                 categoriaSeleccionada = categorias[num - 1];
             }
+            
             if (categoriaSeleccionada) {
                 const productosDeCategoria = convoState.productosDisponibles.filter(p => p.categoria === categoriaSeleccionada);
                 convoState.productosMostrados = productosDeCategoria;
+                
                 let productMessage = `*${categoriaSeleccionada}:*\n\n`;
                 productosDeCategoria.forEach((p, index) => {
                     productMessage += `${index + 1}. *${p.nombre}*`;
@@ -220,7 +264,25 @@ client.on('message', async (message) => {
             }
             const productoSeleccionado = convoState.productosMostrados[num - 1];
             convoState.productoTemporal = productoSeleccionado;
-            if (productoSeleccionado.variaciones && productoSeleccionado.variaciones.length > 0) {
+
+            const isTwoPizzaPromo = productoSeleccionado.nombre.toLowerCase().includes('2 pizzas familiares');
+
+            if (isTwoPizzaPromo) {
+                await client.sendMessage(from, `¡Has elegido la promoción de *${productoSeleccionado.nombre}*!\n\nPara tu *primera* pizza, por favor, elige la variedad que deseas de la lista a continuación:`);
+                
+                const pizzasDisponibles = convoState.productosDisponibles.filter(p => 
+                    p.categoria.toLowerCase() === 'pizzas' && (!p.variaciones || p.variaciones.length === 0)
+                );
+                convoState.pizzasParaElegir = pizzasDisponibles;
+                let pizzaListMessage = '';
+                pizzasDisponibles.forEach((p, index) => { pizzaListMessage += `${index + 1}. *${p.nombre}*\n`; });
+                await client.sendMessage(from, pizzaListMessage);
+
+                convoState.variedadesPromoElegidas = [];
+                convoState.currentPizzaSelectionCount = 0;
+                convoState.pizzasEnPromoRequeridas = 2;
+                convoState.estado = 'SELECCIONANDO_PIZZAS_PARA_PROMO';
+            } else if (productoSeleccionado.variaciones && productoSeleccionado.variaciones.length > 0) {
                 let variationMessage = `*${productoSeleccionado.nombre}* tiene las siguientes *opciones*:\n\n`;
                 productoSeleccionado.variaciones.forEach((v, index) => {
                     variationMessage += `${index + 1}. *${v.nombre_variacion}* - *$${parseFloat(v.precio).toFixed(2)}*\n`;
@@ -257,6 +319,7 @@ client.on('message', async (message) => {
             }
             const productoParaAñadir = convoState.productoTemporal;
             const item = {
+                is_promo: false,
                 producto_id: productoParaAñadir.id,
                 nombre: productoParaAñadir.nombre,
                 cantidad: cantidad,
@@ -270,12 +333,75 @@ client.on('message', async (message) => {
             let total = 0;
             convoState.carrito.forEach(cartItem => {
                 const itemName = cartItem.nombre_variacion ? `${cartItem.nombre} (${cartItem.nombre_variacion})` : cartItem.nombre;
-                cartMessage += `\n- ${cartItem.cantidad}x ${itemName}`;
+                cartMessage += `\n- ${cartItem.cantidad}x ${itemName} - *$${parseFloat(cartItem.precio_unitario).toFixed(2)}*`;
                 total += cartItem.cantidad * parseFloat(cartItem.precio_unitario);
             });
             cartMessage += `\n\n*Total a pagar: $${total.toFixed(2)}*`;
             cartMessage += `\n\n¿Qué deseas hacer ahora?\nEscribe *menu* para añadir más productos.\nEscribe *finalizar* para completar tu pedido.`;
             await client.sendMessage(from, cartMessage);
+            break;
+        }
+
+        case 'SELECCIONANDO_PIZZAS_PARA_PROMO': {
+            const num = parseInt(content);
+            const pizzasDisponibles = convoState.pizzasParaElegir;
+            const promoSeleccionada = convoState.productoTemporal;
+
+            if (isNaN(num) || num <= 0 || num > pizzasDisponibles.length) {
+                await client.sendMessage(from, 'Opción no válida. Por favor, elige un número de la lista de variedades de pizza.');
+                let pizzaListMessage = `Por favor, elige la variedad de pizza número ${convoState.currentPizzaSelectionCount + 1} de la siguiente lista:\n\n`;
+                pizzasDisponibles.forEach((p, index) => { pizzaListMessage += `${index + 1}. *${p.nombre}*\n`; });
+                await client.sendMessage(from, pizzaListMessage);
+                break;
+            }
+
+            const pizzaElegida = pizzasDisponibles[num - 1];
+            convoState.variedadesPromoElegidas.push(pizzaElegida);
+            convoState.currentPizzaSelectionCount++;
+
+            if (convoState.currentPizzaSelectionCount < convoState.pizzasEnPromoRequeridas) {
+                await client.sendMessage(from, `Para tu *${convoState.currentPizzaSelectionCount + 1}ª* pizza, por favor, elige otra variedad:`);
+                let pizzaListMessage = '';
+                pizzasDisponibles.forEach((p, index) => { pizzaListMessage += `${index + 1}. *${p.nombre}*\n`; });
+                await client.sendMessage(from, pizzaListMessage);
+            } else {
+                const item = {
+                    is_promo: true,
+                    producto_id: promoSeleccionada.id,
+                    nombre: promoSeleccionada.nombre,
+                    cantidad: 1,
+                    precio_unitario: promoSeleccionada.precio,
+                    variedades_elegidas: convoState.variedadesPromoElegidas.map(p => ({
+                        producto_id: p.id,
+                        nombre: p.nombre,
+                        nombre_variacion: 'Familiar'
+                    }))
+                };
+                convoState.carrito.push(item);
+
+                convoState.productoTemporal = null;
+                convoState.pizzasParaElegir = null;
+                convoState.variedadesPromoElegidas = null;
+                convoState.currentPizzaSelectionCount = null;
+                convoState.pizzasEnPromoRequeridas = null;
+                convoState.estado = 'INICIO';
+
+                let cartMessage = '✅ ¡Promoción añadida!\n\n*Tu pedido actual:*\n';
+                let total = 0;
+                convoState.carrito.forEach(cartItem => {
+                    if (cartItem.is_promo) {
+                        const pizzaNames = cartItem.variedades_elegidas.map(v => v.nombre).join(', ');
+                        cartMessage += `\n- ${cartItem.nombre} (${pizzaNames}) - *$${parseFloat(cartItem.precio_unitario).toFixed(2)}*`;
+                    } else {
+                        const itemName = cartItem.nombre_variacion ? `${cartItem.nombre} (${cartItem.nombre_variacion})` : cartItem.nombre;
+                        cartMessage += `\n- ${cartItem.cantidad}x ${itemName} - *$${parseFloat(cartItem.precio_unitario).toFixed(2)}*`;
+                    }
+                    total += cartItem.cantidad * parseFloat(cartItem.precio_unitario);
+                });
+                cartMessage += `\n\n*Total a pagar: $${total.toFixed(2)}*`;
+                cartMessage += `\n\n¿Qué deseas hacer ahora?\nEscribe *menu* para añadir más productos.\nEscribe *finalizar* para completar tu pedido.`;
+                await client.sendMessage(from, cartMessage);
+            }
             break;
         }
 
@@ -295,7 +421,9 @@ client.on('message', async (message) => {
             convoState.estado = 'PIDIENDO_FORMA_PAGO';
             let paymentMessage = '¡Dirección registrada!\n\n¿Cómo deseas pagar?\n\n';
             paymentMessage += '1. *Efectivo* 💵\n';
-            paymentMessage += '2. *Transferencia* 🏦';
+            paymentMessage += '2. *Transferencia* 🏦\n';
+            // ¡Opción 3 de PayPhone re-integrada!
+            paymentMessage += '3. *Tarjeta de Crédito/Débito (PayPhone)* 💳';
             await client.sendMessage(from, paymentMessage);
             break;
         }
@@ -305,13 +433,121 @@ client.on('message', async (message) => {
                 convoState.forma_pago = 'Efectivo';
                 convoState.estado = 'PIDIENDO_MONTO_EFECTIVO';
                 let total = convoState.carrito.reduce((sum, item) => sum + item.cantidad * parseFloat(item.precio_unitario), 0);
-                await client.sendMessage(from, `El total de tu pedido es *$${total.toFixed(2)}*. ¿Con cuánto vas a pagar? (ej: "10" o "pago exacto")`);
+                await client.sendMessage(from, `El total de tu pedido es *$${total.toFixed(2)}*. ¿Con cuánto vas a pagar? (ej: "10" o "pago exacto/completo")`);
             } else if (content.includes('2') || content.includes('transferencia')) {
                 convoState.forma_pago = 'Transferencia';
                 convoState.estado = 'PIDIENDO_BANCO_CLIENTE';
                 await client.sendMessage(from, 'Perfecto, aceptamos transferencias. ¿Desde qué banco realizarías el pago? (ej: Pichincha, Guayaquil, etc.)');
+            } else if (content.includes('3') || content.includes('tarjeta') || content.includes('payphone')) { // ¡Lógica de PayPhone re-integrada!
+                convoState.forma_pago = 'Tarjeta (PayPhone)';
+                convoState.estado = 'GENERANDO_LINK_PAYPHONE';
+                
+                let totalPedido = convoState.carrito.reduce((sum, item) => sum + item.cantidad * parseFloat(item.precio_unitario), 0);
+                const amountInCents = Math.round(totalPedido * 100); // Monto total en centavos
+
+                // --- Generar clientTransactionId replicando la lógica PHP ---
+                const now = new Date();
+                const year = String(now.getFullYear()).substring(2);
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                const hours = String(now.getHours()).padStart(2, '0');
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+                const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+                const randomMicroseconds = String(Math.floor(Math.random() * 1000000)).padStart(6, '0');
+                
+                const clientTransactionIdBase = `${year}${month}${day}${hours}${minutes}${seconds}${milliseconds}${randomMicroseconds}`;
+                const payphoneClientTxToken = clientTransactionIdBase.substring(0, 15).toUpperCase(); 
+                convoState.payphone_temp_id = payphoneClientTxToken; // Guardar en el estado para rastrear
+
+                await client.sendMessage(from, 'Generando enlace de pago con PayPhone... 💳');
+
+                try {
+                    let snapshotObservaciones = convoState.observaciones || 'Tomado por WhatsApp Bot';
+                    const promoItemsInCart = convoState.carrito.filter(item => item.is_promo);
+                    if (promoItemsInCart.length > 0) {
+                        const promoDetails = promoItemsInCart.map(item => {
+                            const pizzaNames = item.variedades_elegidas.map(v => v.nombre).join(', ');
+                            return `${item.nombre} (${pizzaNames})`;
+                        }).join('; ');
+                        snapshotObservaciones += ` - Promociones: ${promoDetails}`;
+                    }
+
+                    // Guardar la transacción pendiente en Supabase ANTES de generar el link
+                    const { data: supabaseInsertData, error: supabaseInsertError } = await supabase
+                        .from('pending_transfers')
+                        .insert([
+                            {
+                                id: payphoneClientTxToken,
+                                customer_whatsapp: from,
+                                customer_name: '',
+                                media_data: null,
+                                convo_state_snapshot: { ...convoState, estado: 'PENDIENTE_VERIFICACION_PAGO_PAYPHONE' },
+                                order_details_snapshot: {
+                                    carrito: convoState.carrito,
+                                    direccion_mz: convoState.direccion_mz,
+                                    direccion_villa: convoState.direccion_villa,
+                                    total: totalPedido,
+                                    observaciones: snapshotObservaciones,
+                                    forma_pago: convoState.forma_pago,
+                                    payphone_transaction_id: null
+                                },
+                                status: 'PAYPHONE_PENDING'
+                            }
+                        ]);
+
+                    if (supabaseInsertError) {
+                        console.error('Error al guardar transacción PayPhone pendiente en Supabase:', supabaseInsertError);
+                        await client.sendMessage(from, 'Lo siento, hubo un problema técnico al iniciar el pago. Por favor, intenta de nuevo.');
+                        convoState.estado = 'ASISTENCIA_HUMANA';
+                        conversations[from] = convoState;
+                        return;
+                    }
+
+                    // --- CONSTRUCCIÓN DEL PAYLOAD FINAL SEGÚN EL EJEMPLO PHP Y TUS NUEVAS CREDENCIALES ---
+                    const payphonePayload = {
+                        amount: amountInCents,
+                        amountWithoutTax: amountInCents,
+                        amountWithTax: 0,
+                        tax: 0,
+                        service: 0,
+                        tip: 0,
+                        currency: 'USD',
+                        reference: `Pedido Bot #${payphoneClientTxToken}`,
+                        clientTransactionId: payphoneClientTxToken,
+                        storeId: PAYPHONE_STORE_ID, // <<< ¡ESTE ES EL CAMPO CLAVE QUE ESTAMOS ACTUALIZANDO!
+                        // Campos como 'responseUrl', 'cancellationUrl', 'oneTime', 'isAmountEditable', 'clientUserId'
+                        // NO están presentes en el ejemplo PHP para /api/Links. Asumimos que no son parte de este payload.
+                    };
+                    
+                    console.log("Payload enviado a PayPhone:", JSON.stringify(payphonePayload, null, 2)); // Para depuración
+
+                    const payphoneResponse = await axios.post(PAYPHONE_GENERATE_LINK_URL, payphonePayload, {
+                        headers: {
+                            'Authorization': `Bearer ${PAYPHONE_API_KEY}`,
+                            'Content-Type': 'application/json'
+                        }
+                    });
+
+                    // --- MANEJO DE RESPUESTA ACTUALIZADO (espera un string directamente) ---
+                    if (typeof payphoneResponse.data === 'string' && payphoneResponse.data.startsWith('https://')) {
+                        const payphoneLink = payphoneResponse.data;
+                        await client.sendMessage(from, `¡Listo! Haz clic en el siguiente enlace para pagar tu pedido de *$${totalPedido.toFixed(2)}* con tarjeta:\n\n👉 ${payphoneLink}\n\nUna vez que completes el pago, te confirmaremos tu pedido automáticamente. ¡Gracias por tu paciencia!`);
+                        convoState.estado = 'PENDIENTE_VERIFICACION_PAGO_PAYPHONE';
+                    } else {
+                        // Si no es un string con el link, es un error de PayPhone o una respuesta inesperada.
+                        console.error("Error al generar el link de PayPhone: Respuesta inesperada de PayPhone.", payphoneResponse.data);
+                        throw new Error(`No se recibió un enlace de pago válido de PayPhone en la respuesta. Respuesta completa: ${JSON.stringify(payphoneResponse.data)}`);
+                    }
+
+                } catch (error) {
+                    const errorMessage = error.response?.data?.message || error.message;
+                    console.error("Error al generar el link de PayPhone (catch):", errorMessage, error.response?.data?.errors || error.response?.data || "No hay detalles adicionales en error.response.data");
+                    await client.sendMessage(from, `Lo siento, hubo un problema al procesar el pago con PayPhone: ${errorMessage}. Por favor, intenta de nuevo o elige otra forma de pago.`);
+                    convoState.estado = 'PIDIENDO_FORMA_PAGO';
+                }
             } else {
-                await client.sendMessage(from, 'Opción no válida. Por favor, responde con *1* para Efectivo o *2* para Transferencia.');
+                await client.sendMessage(from, 'Opción no válida. Por favor, responde con *1* para Efectivo, *2* para Transferencia o *3* para Tarjeta.');
             }
             break;
         }
@@ -320,27 +556,59 @@ client.on('message', async (message) => {
             const montoTexto = content.replace('$', '').trim();
             let montoPago;
             const totalPedido = convoState.carrito.reduce((sum, item) => sum + item.cantidad * parseFloat(item.precio_unitario), 0);
+            
             if (montoTexto.includes('exacto') || montoTexto.includes('completo')) {
                 montoPago = totalPedido;
             } else {
                 montoPago = parseFloat(montoTexto);
             }
+
             if (isNaN(montoPago) || montoPago < totalPedido) {
-                await client.sendMessage(from, `El monto no es válido o es menor al total de $${totalPedido.toFixed(2)}. Por favor, responde con un número mayor o igual, o con "exacto" o "completo".`);
+                await client.sendMessage(from, `El monto no es válido o es menor al total de $${totalPedido.toFixed(2)}. Por favor, responde con un número mayor o igual, o con "pago exacto" o "pago completo".`);
                 break;
             }
             convoState.observaciones = `Cliente paga con $${montoPago.toFixed(2)}`;
             
-            // Lógica para efectivo: directamente a creación de orden
             try {
                 await client.sendMessage(from, '¡Gracias! Procesando tu pedido... ⏳');
                 
+                const productosParaAPI = convoState.carrito.map(item => {
+                    if (item.is_promo) {
+                        return item.variedades_elegidas.map(pizza => ({
+                            producto_id: pizza.producto_id,
+                            nombre: pizza.nombre,
+                            cantidad: 1,
+                            precio_unitario: 0,
+                            nombre_variacion: pizza.nombre_variacion
+                        }));
+                    } else {
+                        return {
+                            producto_id: item.producto_id,
+                            nombre: item.nombre,
+                            cantidad: item.cantidad,
+                            precio_unitario: item.precio_unitario,
+                            nombre_variacion: item.nombre_variacion
+                        };
+                    }
+                }).flat();
+
+                let pedidoObservaciones = convoState.observaciones || 'Tomado por WhatsApp Bot (Efectivo)';
+                const promoItemsInCart = convoState.carrito.filter(item => item.is_promo);
+                if (promoItemsInCart.length > 0) {
+                    const promoDetails = promoItemsInCart.map(item => {
+                        const pizzaNames = item.variedades_elegidas.map(v => v.nombre).join(', ');
+                        return `${item.nombre} (${pizzaNames})`;
+                    }).join('; ');
+                    pedidoObservaciones += ` - Promociones: ${promoDetails}`;
+                }
+
+
                 const pedidoParaAPI = {
-                    productos: convoState.carrito,
+                    productos: productosParaAPI,
                     direccion_mz: convoState.direccion_mz,
                     direccion_villa: convoState.direccion_villa,
                     total: totalPedido,
-                    observaciones: convoState.observaciones || 'Tomado por WhatsApp Bot (Efectivo)',
+                    observaciones: pedidoObservaciones,
                     pagos: [{ forma_pago: convoState.forma_pago, monto: montoPago }]
                 };
 
@@ -348,7 +616,7 @@ client.on('message', async (message) => {
                 const pedidoId = response.data.pedidoId;
 
                 await client.sendMessage(from, `✅ ¡Tu pedido #${pedidoId} ha sido confirmado y está en preparación! Gracias por preferirnos.`);
-                convoState = { estado: 'INICIO', carrito: [] }; // Reiniciar conversación
+                convoState = { estado: 'INICIO', carrito: [] };
             } catch (error) {
                 console.error("Error al enviar el pedido a la API (Efectivo):", error.response?.data || error.message);
                 await client.sendMessage(from, 'Lo siento, hubo un problema al procesar tu pedido. Un agente se pondrá en contacto contigo.');
@@ -375,10 +643,8 @@ client.on('message', async (message) => {
         case 'ESPERANDO_COMPROBANTE': {
              if (message.hasMedia) {
                 const media = await message.downloadMedia();
-                // Generar un ID único corto de 4 caracteres alfanuméricos y en mayúsculas
                 const tempOrderId = uuidv4().substring(0, 4).toUpperCase(); 
                 
-                // Obtener nombre del cliente para almacenamiento y mensajes
                 let customerName = from.replace('@c.us', '');
                 try {
                     const contact = await client.getContactById(from);
@@ -387,10 +653,18 @@ client.on('message', async (message) => {
                     console.warn(`No se pudo obtener el nombre del contacto para ${from}:`, error.message);
                 }
 
-                // Calcular el total para order_details_snapshot
                 let totalPedido = convoState.carrito.reduce((sum, item) => sum + item.cantidad * parseFloat(item.precio_unitario), 0);
 
-                // Guardar la información relevante en Supabase
+                let snapshotObservaciones = convoState.observaciones || 'Tomado por WhatsApp Bot';
+                const promoItemsInCart = convoState.carrito.filter(item => item.is_promo);
+                if (promoItemsInCart.length > 0) {
+                    const promoDetails = promoItemsInCart.map(item => {
+                        const pizzaNames = item.variedades_elegidas.map(v => v.nombre).join(', ');
+                        return `${item.nombre} (${pizzaNames})`;
+                    }).join('; ');
+                    snapshotObservaciones += ` - Promociones: ${promoDetails}`;
+                }
+
                 const { data, error } = await supabase
                     .from('pending_transfers')
                     .insert([
@@ -398,14 +672,14 @@ client.on('message', async (message) => {
                             id: tempOrderId,
                             customer_whatsapp: from,
                             customer_name: customerName,
-                            media_data: media.data, // Almacenar el base64 de la imagen
-                            convo_state_snapshot: { ...convoState, estado: 'PENDIENTE_VERIFICACION_PAGO' }, // Snapshot del estado en el momento de enviar la imagen
-                            order_details_snapshot: { // Guardar los detalles del pedido en el snapshot
+                            media_data: media.data,
+                            convo_state_snapshot: { ...convoState, estado: 'PENDIENTE_VERIFICACION_PAGO' },
+                            order_details_snapshot: {
                                 carrito: convoState.carrito,
                                 direccion_mz: convoState.direccion_mz,
                                 direccion_villa: convoState.direccion_villa,
                                 total: totalPedido,
-                                observaciones: convoState.observaciones,
+                                observaciones: snapshotObservaciones,
                                 forma_pago: convoState.forma_pago
                             },
                             status: 'PENDING'
@@ -420,10 +694,8 @@ client.on('message', async (message) => {
                     return;
                 }
                 
-                // 1. Mensaje al Cliente: "Estamos verificando..."
                 await client.sendMessage(from, '¡Gracias por tu pago! Estamos verificando la llegada del dinero a nuestra cuenta. En breve recibirás la confirmación de tu pedido. Agradecemos tu paciencia. ⏳');
                 
-                // 2. Mensaje al Número de Gestión de Cuentas con la foto y las instrucciones
                 const verificationMessage = `Nueva transferencia pendiente de verificación para *${customerName}* (WhatsApp: ${from.replace('@c.us', '')}).\n\nPor favor, responde a este chat con *CONFIRMAR TRF-${tempOrderId}* si el pago es correcto, o *PROBLEMA TRF-${tempOrderId}* si hay algún inconveniente.`;
                 await client.sendMessage(NUMERO_GESTION_CUENTAS, media, { caption: verificationMessage });
 
@@ -434,7 +706,8 @@ client.on('message', async (message) => {
              break;
         }
 
-        case 'PENDIENTE_VERIFICACION_PAGO': {
+        case 'PENDIENTE_VERIFICACION_PAGO': // Para transferencias manuales
+        case 'PENDIENTE_VERIFICACION_PAGO_PAYPHONE': { // ¡Estado PayPhone re-integrado!
             await client.sendMessage(from, 'Gracias por tu paciencia. Tu pago está siendo verificado. Te notificaremos tan pronto tengamos una actualización. ✨');
             break;
         }
@@ -456,8 +729,8 @@ client.on('message', async (message) => {
 
 
 // --- Funciones de procesamiento de confirmación/problema de transferencia ---
-async function processTransferConfirmation(tempOrderId, isConfirmed) {
-    // 1. Obtener los datos de la transferencia pendiente de Supabase
+// Añadimos 'isPayphone' para diferenciar si la confirmación viene de PayPhone (webhook) o manual
+async function processTransferConfirmation(tempOrderId, isConfirmed, isPayphone = false) {
     const { data: transferData, error: fetchError } = await supabase
         .from('pending_transfers')
         .select('*')
@@ -465,84 +738,115 @@ async function processTransferConfirmation(tempOrderId, isConfirmed) {
         .single();
 
     if (fetchError || !transferData) {
-        await client.sendMessage(NUMERO_GESTION_CUENTAS, `Error: No se encontró la transferencia con ID temporal "${tempOrderId}" en Supabase.`);
-        console.error(`Error: ID temporal "${tempOrderId}" no encontrado o error al buscar en Supabase:`, fetchError?.message || 'No data');
+        // Si viene de PayPhone y no encuentra la transacción (puede ser un reintento de webhook, etc.)
+        if (isPayphone) {
+            console.warn(`Webhook de PayPhone recibido para ID "${tempOrderId}" pero no se encontró la transacción pendiente. Podría ser un reintento o ya procesado.`);
+            // No enviar mensaje al número de gestión, ya que no es un error de su parte.
+        } else {
+            await client.sendMessage(NUMERO_GESTION_CUENTAS, `Error: No se encontró la transferencia con ID temporal "${tempOrderId}" en Supabase.`);
+            console.error(`Error: ID temporal "${tempOrderId}" no encontrado o error al buscar en Supabase:`, fetchError?.message || 'No data');
+        }
         return;
     }
 
     const customerFrom = transferData.customer_whatsapp;
-    // Restaurar el estado de la conversación del cliente que estaba esperando
-    // Esto es crucial para que el bot "recuerde" dónde estaba el cliente y pueda responder adecuadamente.
-    conversations[customerFrom] = transferData.convo_state_snapshot;
+    conversations[customerFrom] = transferData.convo_state_snapshot; // Restaurar el estado previo del cliente
     
-    // Obtener el nombre del contacto para los logs/mensajes
     let customerName = transferData.customer_name || customerFrom.replace('@c.us', '');
 
     if (isConfirmed) {
         try {
-            // Usar los detalles del pedido del snapshot guardado en Supabase
             const orderDetails = transferData.order_details_snapshot;
             const total = orderDetails.total;
 
+            const productosParaAPI = orderDetails.carrito.map(item => {
+                if (item.is_promo) {
+                    return item.variedades_elegidas.map(pizza => ({
+                        producto_id: pizza.producto_id,
+                        nombre: pizza.nombre,
+                        cantidad: 1,
+                        precio_unitario: 0,
+                        nombre_variacion: pizza.nombre_variacion
+                    }));
+                } else {
+                    return {
+                        producto_id: item.producto_id,
+                        nombre: item.nombre,
+                        cantidad: item.cantidad,
+                        precio_unitario: item.precio_unitario,
+                        nombre_variacion: item.nombre_variacion
+                    };
+                }
+            }).flat();
+
             const pedidoParaAPI = {
-                productos: orderDetails.carrito,
+                productos: productosParaAPI,
                 direccion_mz: orderDetails.direccion_mz,
                 direccion_villa: orderDetails.direccion_villa,
                 total: total,
-                observaciones: orderDetails.observaciones || `Tomado por WhatsApp Bot (Transferencia TRF-${tempOrderId} Confirmada)`,
+                observaciones: orderDetails.observaciones,
                 pagos: [{ forma_pago: orderDetails.forma_pago, monto: total }]
             };
 
             const response = await apiClient.post('/pedidos', pedidoParaAPI);
             const pedidoId = response.data.pedidoId;
 
-            await client.sendMessage(customerFrom, `✅ ¡Tu pago ha sido confirmado y tu pedido #${pedidoId} ha sido aceptado! 🥳 Te avisaremos cuando esté listo y en camino. ¡Gracias por elegirnos!`);
-            await client.sendMessage(NUMERO_GESTION_CUENTAS, `✅ Pedido #${pedidoId} creado y confirmado para *${customerName}* (${customerFrom.replace('@c.us', '')}) (ID TRF-${tempOrderId}).`);
+            await client.sendMessage(customerFrom, `✅ ¡Tu pago ha sido confirmado y tu pedido #${pedidoId} ha sido aceptado! 🥳 Te avisaremos cuando esté listo para retirar/en camino. ¡Gracias por elegirnos!`);
+            // Solo notificar al número de gestión si fue una transferencia manual
+            if (!isPayphone) {
+                await client.sendMessage(NUMERO_GESTION_CUENTAS, `✅ Pedido #${pedidoId} creado y confirmado para *${customerName}* (${customerFrom.replace('@c.us', '')}) (ID TRF-${tempOrderId}).`);
+            } else {
+                console.log(`Pedido #${pedidoId} creado y confirmado automáticamente vía PayPhone para ${customerName} (ID PayPhone: ${tempOrderId}).`);
+            }
             
-            // Actualizar estado en Supabase
             const { error: updateError } = await supabase
                 .from('pending_transfers')
-                .update({ status: 'CONFIRMED', updated_at: new Date().toISOString() })
+                .update({ status: isPayphone ? 'PAYPHONE_ORDER_CREATED' : 'CONFIRMED', updated_at: new Date().toISOString() })
                 .eq('id', tempOrderId);
 
-            if (updateError) console.error("Error al actualizar estado 'CONFIRMED' en Supabase:", updateError);
+            if (updateError) console.error("Error al actualizar estado en Supabase:", updateError);
 
-            // Reiniciar la conversación del cliente
             conversations[customerFrom] = { estado: 'INICIO', carrito: [] };
 
         } catch (error) {
-            console.error(`Error al crear el pedido #${tempOrderId} en Il Sapore POS (Transferencia Confirmada) para ${customerFrom}:`, error.response?.data || error.message);
+            console.error(`Error al crear el pedido #${tempOrderId} en Il Sapore POS (Confirmado${isPayphone ? ' PayPhone' : ''}) para ${customerFrom}:`, error.response?.data || error.message);
             await client.sendMessage(customerFrom, 'Lo siento, hubo un problema al procesar tu pedido después de confirmar el pago. Un agente se pondrá en contacto contigo.');
-            await client.sendMessage(NUMERO_GESTION_CUENTAS, `❌ Error al crear pedido para *${customerName}* (ID TRF-${tempOrderId}). Por favor, revisa manualmente. Error: ${error.response?.data?.message || error.message}`);
             
-            // Poner al cliente en un estado donde un humano lo asistirá si falla la creación del pedido
+            if (!isPayphone) { // Solo si no es PayPhone, enviamos el error al num de gestión
+                await client.sendMessage(NUMERO_GESTION_CUENTAS, `❌ Error al crear pedido para *${customerName}* (ID TRF-${tempOrderId}). Por favor, revisa manualmente. Error: ${error.response?.data?.message || error.message}`);
+            } else {
+                console.error(`❌ Error automático al crear pedido PayPhone para ${customerName} (ID: ${tempOrderId}). Se requiere revisión manual.`);
+                // Opcional: Podrías enviar una notificación al NUMERO_GESTION_CUENTAS para errores de POS con PayPhone
+                await client.sendMessage(NUMERO_GESTION_CUENTAS, `⚠️ ERROR: Pago PayPhone de ${customerName} (ID: ${tempOrderId}) fue confirmado, pero falló la creación del pedido en POS. Revisar manualmente.`);
+            }
+            
             conversations[customerFrom].estado = 'ASISTENCIA_HUMANA'; 
             
-            // Aunque hubo un error en el POS, el pago se 'confirmó' por el personal,
-            // entonces el estado en Supabase debe reflejar la acción del personal.
             const { error: updateError } = await supabase
                 .from('pending_transfers')
-                .update({ status: 'CONFIRMED_ERROR_POS', updated_at: new Date().toISOString() })
+                .update({ status: isPayphone ? 'PAYPHONE_ORDER_ERROR' : 'CONFIRMED_ERROR_POS', updated_at: new Date().toISOString() })
                 .eq('id', tempOrderId);
             
             if (updateError) console.error("Error al actualizar estado 'CONFIRMED_ERROR_POS' en Supabase:", updateError);
         }
-    } else { // isConfirmed es false, hay un problema con la transferencia
-        await client.sendMessage(customerFrom, `Hemos tenido un problema al verificar tu pago. Por favor, contáctanos directamente para solucionar esto. Puedes escribir a este número de WhatsApp: ${NUMERO_GESTION_CUENTAS.replace('@c.us', '')}. ¡Disculpa las molestias!`);
-        await client.sendMessage(NUMERO_GESTION_CUENTAS, `❌ Se notificó al cliente *${customerName}* (${customerFrom.replace('@c.us', '')}) sobre el problema con la transferencia TRF-${tempOrderId}.`);
+    } else { // isConfirmed es false, hay un problema
+        await client.sendMessage(customerFrom, `Hemos tenido un problema al verificar tu pago con tarjeta. Por favor, contáctanos directamente para solucionar esto. Puedes escribir a este número de WhatsApp: ${NUMERO_GESTION_CUENTAS.replace('@c.us', '')}. ¡Disculpa las molestias!`);
         
-        // Actualizar estado en Supabase
+        if (!isPayphone) { // Solo si no es PayPhone, enviamos el error al num de gestión
+             await client.sendMessage(NUMERO_GESTION_CUENTAS, `❌ Se notificó al cliente *${customerName}* (${customerFrom.replace('@c.us', '')}) sobre el problema con la transferencia TRF-${tempOrderId}.`);
+        } else {
+            console.warn(`Pago PayPhone para ${customerName} (ID: ${tempOrderId}) FALLÓ. Cliente notificado.`);
+        }
+        
         const { error: updateError } = await supabase
             .from('pending_transfers')
-            .update({ status: 'REJECTED', updated_at: new Date().toISOString() })
+            .update({ status: isPayphone ? 'PAYPHONE_REJECTED' : 'REJECTED', updated_at: new Date().toISOString() })
             .eq('id', tempOrderId);
 
         if (updateError) console.error("Error al actualizar estado 'REJECTED' en Supabase:", updateError);
 
-        // Reiniciar la conversación del cliente
         conversations[customerFrom] = { estado: 'INICIO', carrito: [] };
     }
 }
-
 
 client.initialize();
