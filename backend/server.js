@@ -78,9 +78,9 @@ app.post('/api/payphone-webhook', async (req, res) => {
 
     try {
         let newStatus = 'PAYPHONE_UNKNOWN'; // Estado por defecto
-        if (payphoneStatus === 1) { // 1 = Aprobado
+        if (payphoneStatus === 3) { // 3 = Aprobado
             newStatus = 'PAYPHONE_CONFIRMED';
-        } else if (payphoneStatus === 3) { // 3 = Rechazado (Verificar doc PayPhone para otros estados como 2-Pendiente)
+        } else if (payphoneStatus === 2) { // 2 = Rechazado (Verificar doc PayPhone para otros estados como 2-Pendiente)
             newStatus = 'PAYPHONE_REJECTED';
         } else {
             newStatus = `PAYPHONE_STATUS_${payphoneStatus}`; // Para otros estados intermedios/desconocidos
