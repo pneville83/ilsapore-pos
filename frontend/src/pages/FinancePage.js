@@ -1,4 +1,5 @@
 // frontend/src/pages/FinancePage.js
+
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import DatePicker from 'react-datepicker';
@@ -100,7 +101,6 @@ function FinancePage() {
     };
 
     return (
-        // --- ¡CORRECCIÓN! El div principal ahora envuelve todo, incluido el modal ---
         <div>
             {editingTransaction && (
                 <div className="edit-modal-overlay">
@@ -115,7 +115,7 @@ function FinancePage() {
                             <select value={editingTransaction.cuenta} onChange={(e) => setEditingTransaction({...editingTransaction, cuenta: e.target.value})}>
                                 <option value="Efectivo">Efectivo</option>
                                 <option value="Transferencia">Transferencia</option>
-                                <option value="Tarjeta">Tarjeta</option>
+                                <option value="Tarjeta">Tarjeta</option> {/* <<< AÑADIDO: Opción para editar */}
                             </select>
                             <div className="edit-modal-buttons">
                                 <button type="submit">Guardar Cambios</button>
@@ -127,11 +127,30 @@ function FinancePage() {
             )}
 
             <h1>Finanzas y Saldos de Cuentas</h1>
-            <div className="finance-header">{Object.keys(saldos).map(key => (<div key={key} className="balance-card"><h3>Saldo en {key}</h3><p className={`amount ${saldos[key].balance >= 0 ? 'positive' : 'negative'}`}>{formatCurrency(saldos[key].balance)}</p></div>))}</div>
+            <div className="finance-header">
+                {Object.keys(saldos).map(key => (
+                    <div key={key} className="balance-card">
+                        <h3>Saldo en {key}</h3>
+                        <p className={`amount ${saldos[key].balance >= 0 ? 'positive' : 'negative'}`}>{formatCurrency(saldos[key].balance)}</p>
+                    </div>
+                ))}
+            </div>
             <div className="finance-layout">
                 <div className="new-expense-panel">
                     <h2>Registrar Egreso/Gasto</h2>
-                    <form onSubmit={handleSubmitEgreso}><label>Descripción:</label><textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required rows="3" /><label>Monto ($):</label><input type="number" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} required /><label>Pagar desde la cuenta de:</label><select value={cuenta} onChange={(e) => setCuenta(e.target.value)}><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option></select><button type="submit" style={{width: '100%', marginTop: '10px'}}>Guardar Egreso</button></form>
+                    <form onSubmit={handleSubmitEgreso}>
+                        <label>Descripción:</label>
+                        <textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required rows="3" />
+                        <label>Monto ($):</label>
+                        <input type="number" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} required />
+                        <label>Pagar desde la cuenta de:</label>
+                        <select value={cuenta} onChange={(e) => setCuenta(e.target.value)}>
+                            <option value="Efectivo">Efectivo</option>
+                            <option value="Transferencia">Transferencia</option>
+                            <option value="Tarjeta">Tarjeta</option> {/* <<< AÑADIDO: Opción para registrar nuevo egreso */}
+                        </select>
+                        <button type="submit" style={{width: '100%', marginTop: '10px'}}>Guardar Egreso</button>
+                    </form>
                     {statusMessage && <p>{statusMessage}</p>}
                 </div>
                 <div className="transaction-history-panel">
@@ -139,7 +158,7 @@ function FinancePage() {
                     <div className="finance-filters">
                         <div><label>Desde:</label><DatePicker selected={startDate} onChange={date => setStartDate(date)} isClearable placeholderText="Fecha de inicio" dateFormat="dd/MM/yyyy"/></div>
                         <div><label>Hasta:</label><DatePicker selected={endDate} onChange={date => setEndDate(date)} isClearable placeholderText="Fecha de fin" dateFormat="dd/MM/yyyy"/></div>
-                        <div><label>Cuenta:</label><select value={cuentaFiltro} onChange={e => setCuentaFiltro(e.target.value)}><option value="">Todas</option><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option><option value="Tarjeta">Tarjeta</option></select></div>
+                        <div><label>Cuenta:</label><select value={cuentaFiltro} onChange={e => setCuentaFiltro(e.target.value)}><option value="">Todas</option><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option><option value="Tarjeta">Tarjeta</option></select></div> {/* <<< AÑADIDO: Opción para filtrar */}
                         <button type="button" onClick={clearFilters} style={{backgroundColor: 'var(--secondary-color)'}}>Limpiar Filtros</button>
                     </div>
                     <div className="table-container">
