@@ -18,7 +18,7 @@ const POS_USERNAME = process.env.POS_USERNAME;
 const POS_PASSWORD = process.env.POS_PASSWORD;
 const NUMERO_GESTION_CUENTAS = process.env.NUMERO_GESTION_CUENTAS;
 
-// PayPhone API - ¡Variables re-integradas!
+// PayPhone API
 const PAYPHONE_API_KEY = process.env.PAYPHONE_API_KEY;
 const PAYPHONE_STORE_ID = process.env.PAYPHONE_STORE_ID;
 const PAYPHONE_CLIENT_ID = process.env.PAYPHONE_CLIENT_ID; // Tu "Id Cliente" de PayPhone
@@ -160,17 +160,17 @@ client.on('message', async (message) => {
 
     // --- LÓGICA PARA EL NÚMERO DE GESTIÓN DE CUENTAS ---
     if (from === NUMERO_GESTION_CUENTAS) {
-        const confirmMatch = content.match(/confirmar\s+(?:trf-)?([a-z0-9]{4})/);
-        const problemMatch = content.match(/problema\s+(?:trf-)?([a-z0-9]{4})/);
+        const confirmMatch = content.match(/confirmar\s+(?:trf-)?([a-z0-9]{4,15})/); // Acepta IDs de 4 a 15 caracteres
+        const problemMatch = content.match(/problema\s+(?:trf-)?([a-z0-9]{4,15})/); // Acepta IDs de 4 a 15 caracteres
 
         if (confirmMatch && confirmMatch[1]) {
             const tempOrderId = confirmMatch[1].toUpperCase();
-            await processTransferConfirmation(tempOrderId, true, false);
+            await processTransferConfirmation(tempOrderId, true); // No hay parámetro isPayphone en este flujo
         } else if (problemMatch && problemMatch[1]) {
             const tempOrderId = problemMatch[1].toUpperCase();
-            await processTransferConfirmation(tempOrderId, false, false);
+            await processTransferConfirmation(tempOrderId, false); // No hay parámetro isPayphone en este flujo
         } else {
-            await client.sendMessage(from, 'Comando no reconocido. Usa "CONFIRMAR TRF-[ID]" o "PROBLEMA TRF-[ID]". El ID debe ser de 4 caracteres alfanuméricos.');
+            await client.sendMessage(from, 'Comando no reconocido. Usa "CONFIRMAR TRF-[ID]" o "PROBLEMA TRF-[ID]". El ID debe ser de 4 a 15 caracteres alfanuméricos.');
         }
         return;
     }
@@ -179,10 +179,14 @@ client.on('message', async (message) => {
     let convoState = conversations[from] || { estado: 'INICIO', carrito: [] };
 
     // --- MANEJO DE COMANDOS GLOBALES DE INICIO/REINICIO ---
-    const resetKeywords = ['hola', 'cancelar', 'hi', 'empezar', 'inicio', 'comenzar', 'veci', 'buenas', 'noches', 'pedido', 'quisiera'];
+    const resetKeywords = ['hola', 'cancelar', 'atendiendo', 'empezar', 'inicio', 'comenzar', 'veci', 'buenas', 'noches', 'pedido', 'quisiera'];
     const shouldResetConversation = resetKeywords.some(keyword => content.includes(keyword));
+    console.log(`DEBUG: Contenido recibido para reset check: "${content}"`); // <<< AÑADIDO: DEBUG
+    console.log(`DEBUG: shouldResetConversation evaluó a: ${shouldResetConversation}`); // <<< AÑADIDO: DEBUG
+
 
     if (shouldResetConversation) {
+        console.log(`DEBUG: Reseteando conversación debido a palabra clave de inicio/reinicio: "${content}"`); // <<< AÑADIDO: DEBUG
         const welcomeMessage = '¡Hola! 👋 Bienvenido a Il Sapore.\n\nEscribe *menu* para ver nuestras opciones y empezar tu pedido. 🍔';
         await client.sendMessage(from, welcomeMessage);
         convoState = { estado: 'INICIO', carrito: [] };
@@ -422,8 +426,7 @@ client.on('message', async (message) => {
             let paymentMessage = '¡Dirección registrada!\n\n¿Cómo deseas pagar?\n\n';
             paymentMessage += '1. *Efectivo* 💵\n';
             paymentMessage += '2. *Transferencia* 🏦\n';
-            // ¡Opción 3 de PayPhone re-integrada!
-            paymentMessage += '3. *Tarjeta de Crédito/Débito (PayPhone)* 💳';
+            paymentMessage += '3. *Tarjeta de Crédito/Débito (PayPhone)* 💳'; // ¡Opción de PayPhone re-integrada!
             await client.sendMessage(from, paymentMessage);
             break;
         }
@@ -504,7 +507,7 @@ client.on('message', async (message) => {
                         return;
                     }
 
-                    // --- CONSTRUCCIÓN DEL PAYLOAD FINAL SEGÚN EL EJEMPLO PHP Y TUS NUEVAS CREDENCIALES ---
+                    // --- CONSTRUCCIÓN DEL PAYLOAD FINAL SEGÚN EL EJEMPLO PHP ---
                     const payphonePayload = {
                         amount: amountInCents,
                         amountWithoutTax: amountInCents,
@@ -515,9 +518,9 @@ client.on('message', async (message) => {
                         currency: 'USD',
                         reference: `Pedido Bot #${payphoneClientTxToken}`,
                         clientTransactionId: payphoneClientTxToken,
-                        storeId: PAYPHONE_STORE_ID, // <<< ¡ESTE ES EL CAMPO CLAVE QUE ESTAMOS ACTUALIZANDO!
-                        // Campos como 'responseUrl', 'cancellationUrl', 'oneTime', 'isAmountEditable', 'clientUserId'
-                        // NO están presentes en el ejemplo PHP para /api/Links. Asumimos que no son parte de este payload.
+                        storeId: PAYPHONE_STORE_ID,
+                        // El clientId que teníamos en .env no está en el ejemplo PHP para /api/Links.
+                        // Lo omitimos para ajustarnos estrictamente al ejemplo.
                     };
                     
                     console.log("Payload enviado a PayPhone:", JSON.stringify(payphonePayload, null, 2)); // Para depuración
@@ -627,16 +630,25 @@ client.on('message', async (message) => {
 
         case 'PIDIENDO_BANCO_CLIENTE': {
             const bancoCliente = content.toLowerCase();
+            console.log(`DEBUG: En estado PIDIENDO_BANCO_CLIENTE. Cliente respondió con: "${bancoCliente}"`); // <<< AÑADIDO: DEBUG
             let datosCuenta = datosBancarios.cuenta_por_defecto;
+            let foundMatch = false; // <<< AÑADIDO para rastrear si se encontró el banco
             for (const [clave, datos] of Object.entries(datosBancarios.bancos_coincidentes)) {
+                console.log(`DEBUG: Comparando "${bancoCliente}" con clave de banco: "${clave}"`); // <<< AÑADIDO: DEBUG
                 if (bancoCliente.includes(clave)) {
+                    console.log(`DEBUG: Coincidencia encontrada para clave: "${clave}"`); // <<< AÑADIDO: DEBUG
                     datosCuenta = datos;
+                    foundMatch = true; // <<< AÑADIDO
                     break;
                 }
+            }
+            if (!foundMatch) { // <<< AÑADIDO
+                console.warn(`DEBUG: No se encontró una coincidencia específica para "${bancoCliente}". Usando cuenta por defecto.`); // <<< AÑADIDO
             }
             await client.sendMessage(from, `Por favor, realiza la transferencia a la siguiente cuenta y envía el comprobante a este chat para confirmar tu pedido:\n\n*${datosCuenta}*`);
             convoState.observaciones = `Transferencia desde ${content}`;
             convoState.estado = 'ESPERANDO_COMPROBANTE';
+            console.log(`DEBUG: Estado de conversación cambiado a: ${convoState.estado}`); // <<< AÑADIDO: DEBUG
             break;
         }
         
@@ -665,7 +677,7 @@ client.on('message', async (message) => {
                     snapshotObservaciones += ` - Promociones: ${promoDetails}`;
                 }
 
-                const { data, error } = await supabase
+                const { data: supabaseInsertData, error: supabaseInsertError } = await supabase
                     .from('pending_transfers')
                     .insert([
                         {
@@ -686,7 +698,7 @@ client.on('message', async (message) => {
                         }
                     ]);
 
-                if (error) {
+                if (supabaseInsertError) {
                     console.error('Error al guardar transferencia pendiente en Supabase:', error);
                     await client.sendMessage(from, 'Lo siento, hubo un problema técnico al registrar tu comprobante. Por favor, intenta de nuevo o contacta a un agente.');
                     convoState.estado = 'ASISTENCIA_HUMANA';
