@@ -68,7 +68,7 @@ app.post('/api/payphone-webhook', async (req, res) => {
 
     const clientTxToken = payload.ClientTransactionId; // <<< CORREGIDO: 'ClientTransactionId' con mayúsculas
     const payphoneTransactionId = payload.id; // ID de transacción que PayPhone nos da en el webhook
-    const payphoneStatus = payload.statusCode; // 1 = Aprobado, 2 = Pendiente, 3 = Rechazado (revisar doc PayPhone)
+    const payphoneStatus = payload.StatusCode; // <<< CORREGIDO: 'StatusCode' con mayúsculas 'S' y 'C'
     const payphoneMessage = payload.message; // Mensaje de PayPhone
 
     if (!clientTxToken) {
