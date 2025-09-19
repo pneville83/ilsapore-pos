@@ -731,7 +731,7 @@ client.on('message', async (message) => {
                 
                 await client.sendMessage(from, '¡Gracias por tu pago! Estamos verificando la llegada del dinero a nuestra cuenta. En breve recibirás la confirmación de tu pedido. Agradecemos tu paciencia. ⏳');
                 
-                const verificationMessage = `Nueva transferencia pendiente de verificación para *${customerName}* (WhatsApp: ${from.replace('@c.us', '')}).\n\nPor favor, responde a este chat con *CONFIRMAR TRF-${tempOrderId}* si el pago es correcto, o *PROBLEMA TRF-${tempOrderId}* si hay algún inconveniente.`;
+                const verificationMessage = `Nueva transferencia pendiente de verificación para *${customerName}* (WhatsApp: ${from.replace('@c.us', '')}).\n\nPor favor, responde a este chat con *Confirmar trf-${tempOrderId}* si el pago es correcto, o *Problema trf-${tempOrderId}* si hay algún inconveniente.`;
                 await client.sendMessage(NUMERO_GESTION_CUENTAS, media, { caption: verificationMessage });
 
                 convoState.estado = 'PENDIENTE_VERIFICACION_PAGO';
@@ -826,7 +826,7 @@ async function processTransferConfirmation(tempOrderId, isConfirmed, isPayphone 
             const response = await apiClient.post('/pedidos', pedidoParaAPI);
             const pedidoId = response.data.pedidoId;
 
-            await client.sendMessage(customerFrom, `✅ ¡Tu pago ha sido confirmado y tu pedido #${pedidoId} ha sido aceptado! 🥳 Te avisaremos cuando esté listo para retirar/en camino. ¡Gracias por elegirnos!`);
+            await client.sendMessage(customerFrom, `✅ ¡Tu pago ha sido confirmado y tu pedido #${pedidoId} ha sido aceptado! 🥳 Te avisaremos cuando esté listo en camino. ¡Gracias por elegirnos!`);
             // Solo notificar al número de gestión si fue una transferencia manual
             if (!isPayphone) {
                 await client.sendMessage(NUMERO_GESTION_CUENTAS, `✅ Pedido #${pedidoId} creado y confirmado para *${customerName}* (${customerFrom.replace('@c.us', '')}) (ID TRF-${tempOrderId}).`);
