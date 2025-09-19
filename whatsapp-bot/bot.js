@@ -116,18 +116,29 @@ client.on('ready', async () => {
         supabase
             .channel('pending_transfers')
             .on('postgres_changes', { 
-                event: 'UPDATE', 
+                event: 'UPDATE', // Solo nos interesan las actualizaciones
                 schema: 'public', 
-                table: 'pending_transfers',
-                filter: `status=in.(PAYPHONE_CONFIRMED,PAYPHONE_FAILED,PAYPHONE_ORDER_ERROR,PAYPHONE_REJECTED)` // Se añade PAYPHONE_REJECTED para que el bot reaccione a rechazos
+                table: 'pending_transfers'
+                // <<< ELIMINADO: filter. Esto hará que el bot reciba CUALQUIER actualización de la tabla pending_transfers.
             }, async (payload) => {
                 const updatedTransfer = payload.new;
-                console.log('Supabase Realtime Update:', updatedTransfer);
+                console.log('--- DEBUG BOT REALTIME: RECIBIDO EVENTO DE SUPABASE (SIN FILTRO): ---'); // <<< AÑADIDO DEBUG
+                console.log('DEBUG BOT REALTIME: Payload completo recibido:', payload); // <<< AÑADIDO DEBUG
+                console.log('DEBUG BOT REALTIME: updatedTransfer (nueva fila):', updatedTransfer); // <<< AÑADIDO DEBUG
 
                 const customerFrom = updatedTransfer.customer_whatsapp;
                 let convoState = conversations[customerFrom];
-                
+
+                console.log(`DEBUG BOT REALTIME: customerFrom (del payload): ${customerFrom}`);
+                console.log(`DEBUG BOT REALTIME: updatedTransfer.id (del payload): ${updatedTransfer.id}`);
+                console.log(`DEBUG BOT REALTIME: convoState actual para ${customerFrom}:`, convoState);
+                console.log(`DEBUG BOT REALTIME: Estado esperado en bot: 'PENDIENTE_VERIFICACION_PAGO_PAYPHONE'`);
+                console.log(`DEBUG BOT REALTIME: ID de PayPhone guardado en convoState: ${convoState?.payphone_temp_id}`);
+                console.log(`DEBUG BOT REALTIME: Estado del payload: ${updatedTransfer.status}`);
+
+                // Mantenemos la lógica de procesamiento para que, si el evento llega, aún intente actuar.
                 if (convoState && convoState.estado === 'PENDIENTE_VERIFICACION_PAGO_PAYPHONE' && convoState.payphone_temp_id === updatedTransfer.id) {
+                    console.log(`DEBUG BOT REALTIME: ¡Coincidencia encontrada! Procesando PayPhone ID: ${updatedTransfer.id}, Nuevo Estado: ${updatedTransfer.status}`);
                     
                     if (updatedTransfer.status === 'PAYPHONE_CONFIRMED' || updatedTransfer.status === 'PAYPHONE_ORDER_CREATED') {
                         await processTransferConfirmation(updatedTransfer.id, true, true);
@@ -140,7 +151,8 @@ client.on('ready', async () => {
                          conversations[customerFrom] = { estado: 'ASISTENCIA_HUMANA', carrito: [] };
                     }
                 } else {
-                    console.log(`Ignorando actualización de PayPhone para ${customerFrom}, estado actual: ${convoState?.estado || 'N/A'}, ID de PayPhone: ${convoState?.payphone_temp_id || 'N/A'}`);
+                    console.log(`DEBUG BOT REALTIME: Ignorando actualización de PayPhone para ${customerFrom}. No se cumplen las condiciones.`);
+                    console.log(`DEBUG BOT REALTIME: Razones - Estado convoState: '${convoState?.estado || 'N/A'}' (Esperado: 'PENDIENTE_VERIFICACION_PAGO_PAYPHONE'). ID convoState: '${convoState?.payphone_temp_id || 'N/A'}' (Esperado: '${updatedTransfer.id}').`);
                 }
             })
             .subscribe();
@@ -179,14 +191,15 @@ client.on('message', async (message) => {
     let convoState = conversations[from] || { estado: 'INICIO', carrito: [] };
 
     // --- MANEJO DE COMANDOS GLOBALES DE INICIO/REINICIO ---
-    const resetKeywords = ['hola', 'cancelar', 'atendiendo', 'empezar', 'inicio', 'comenzar', 'veci', 'buenas', 'noches', 'pedido', 'quisiera'];
+    // 'hi' eliminado para evitar conflictos con palabras como "Pichincha"
+    const resetKeywords = ['hola', 'cancelar', 'empezar', 'inicio', 'comenzar', 'veci', 'buenas', 'noches', 'pedido', 'quisiera']; 
     const shouldResetConversation = resetKeywords.some(keyword => content.includes(keyword));
-    console.log(`DEBUG: Contenido recibido para reset check: "${content}"`); // <<< AÑADIDO: DEBUG
-    console.log(`DEBUG: shouldResetConversation evaluó a: ${shouldResetConversation}`); // <<< AÑADIDO: DEBUG
+    console.log(`DEBUG: Contenido recibido para reset check: "${content}"`); 
+    console.log(`DEBUG: shouldResetConversation evaluó a: ${shouldResetConversation}`); 
 
 
     if (shouldResetConversation) {
-        console.log(`DEBUG: Reseteando conversación debido a palabra clave de inicio/reinicio: "${content}"`); // <<< AÑADIDO: DEBUG
+        console.log(`DEBUG: Reseteando conversación debido a palabra clave de inicio/reinicio: "${content}"`); 
         const welcomeMessage = '¡Hola! 👋 Bienvenido a Il Sapore.\n\nEscribe *menu* para ver nuestras opciones y empezar tu pedido. 🍔';
         await client.sendMessage(from, welcomeMessage);
         convoState = { estado: 'INICIO', carrito: [] };
@@ -442,7 +455,7 @@ client.on('message', async (message) => {
                 convoState.estado = 'PIDIENDO_BANCO_CLIENTE';
                 await client.sendMessage(from, 'Perfecto, aceptamos transferencias. ¿Desde qué banco realizarías el pago? (ej: Pichincha, Guayaquil, etc.)');
             } else if (content.includes('3') || content.includes('tarjeta') || content.includes('payphone')) { // ¡Lógica de PayPhone re-integrada!
-                convoState.forma_pago = 'Tarjeta (PayPhone)';
+                convoState.forma_pago = 'Tarjeta';
                 convoState.estado = 'GENERANDO_LINK_PAYPHONE';
                 
                 let totalPedido = convoState.carrito.reduce((sum, item) => sum + item.cantidad * parseFloat(item.precio_unitario), 0);
@@ -509,15 +522,15 @@ client.on('message', async (message) => {
 
                     // --- CONSTRUCCIÓN DEL PAYLOAD FINAL SEGÚN EL EJEMPLO PHP ---
                     const payphonePayload = {
-                        amount: amountInCents,
-                        amountWithoutTax: amountInCents,
-                        amountWithTax: 0,
-                        tax: 0,
-                        service: 0,
-                        tip: 0,
+                        amount: amountInCents, // Monto total
+                        amountWithoutTax: amountInCents, // Si no hay impuestos, el total va aquí
+                        amountWithTax: 0, // 0 (si no hay desglose explícito)
+                        tax: 0, // 0 (si no hay desglose explícito)
+                        service: 0, // 0 (si no aplica)
+                        tip: 0, // 0 (si no aplica)
                         currency: 'USD',
                         reference: `Pedido Bot #${payphoneClientTxToken}`,
-                        clientTransactionId: payphoneClientTxToken,
+                        clientTransactionId: payphoneClientTxToken, // Máx 15 caracteres
                         storeId: PAYPHONE_STORE_ID,
                         // El clientId que teníamos en .env no está en el ejemplo PHP para /api/Links.
                         // Lo omitimos para ajustarnos estrictamente al ejemplo.
@@ -533,20 +546,30 @@ client.on('message', async (message) => {
                     });
 
                     // --- MANEJO DE RESPUESTA ACTUALIZADO (espera un string directamente) ---
+                    console.log("DEBUG PAYPHONE RESPONSE: Respuesta cruda de PayPhone:", payphoneResponse.data); // <<< AÑADIDO: Log de la respuesta cruda
+
                     if (typeof payphoneResponse.data === 'string' && payphoneResponse.data.startsWith('https://')) {
                         const payphoneLink = payphoneResponse.data;
                         await client.sendMessage(from, `¡Listo! Haz clic en el siguiente enlace para pagar tu pedido de *$${totalPedido.toFixed(2)}* con tarjeta:\n\n👉 ${payphoneLink}\n\nUna vez que completes el pago, te confirmaremos tu pedido automáticamente. ¡Gracias por tu paciencia!`);
                         convoState.estado = 'PENDIENTE_VERIFICACION_PAGO_PAYPHONE';
+                        console.log(`DEBUG PAYPHONE RESPONSE: Enlace de PayPhone generado y enviado al cliente: ${payphoneLink}`); // <<< AÑADIDO: Confirmación de envío
                     } else {
                         // Si no es un string con el link, es un error de PayPhone o una respuesta inesperada.
-                        console.error("Error al generar el link de PayPhone: Respuesta inesperada de PayPhone.", payphoneResponse.data);
-                        throw new Error(`No se recibió un enlace de pago válido de PayPhone en la respuesta. Respuesta completa: ${JSON.stringify(payphoneResponse.data)}`);
+                        console.error("DEBUG PAYPHONE RESPONSE: Error al generar el link de PayPhone: Respuesta inesperada de PayPhone.", payphoneResponse.data); // <<< LOG MEJORADO
+                        throw new Error(`No se recibió un enlace de pago válido de PayPhone en la respuesta. Tipo de respuesta: ${typeof payphoneResponse.data}. Contenido: ${JSON.stringify(payphoneResponse.data)}`);
                     }
 
                 } catch (error) {
-                    const errorMessage = error.response?.data?.message || error.message;
-                    console.error("Error al generar el link de PayPhone (catch):", errorMessage, error.response?.data?.errors || error.response?.data || "No hay detalles adicionales en error.response.data");
-                    await client.sendMessage(from, `Lo siento, hubo un problema al procesar el pago con PayPhone: ${errorMessage}. Por favor, intenta de nuevo o elige otra forma de pago.`);
+                    // Si el error es de Axios y tiene un .response, lo logueamos más detalladamente.
+                    if (axios.isAxiosError(error) && error.response) {
+                        const errorMessage = error.response.data?.message || error.message;
+                        console.error("DEBUG PAYPHONE RESPONSE: Error Axios al generar link de PayPhone (catch):", errorMessage, "Detalles:", error.response.data); // <<< LOG MEJORADO
+                        await client.sendMessage(from, `Lo siento, hubo un problema al procesar el pago con PayPhone: ${errorMessage}. Por favor, intenta de nuevo o elige otra forma de pago.`);
+                    } else {
+                        // Para otros tipos de error
+                        console.error("DEBUG PAYPHONE RESPONSE: Error NO Axios al generar link de PayPhone (catch):", error.message); // <<< LOG MEJORADO
+                        await client.sendMessage(from, `Lo siento, hubo un problema al procesar el pago con PayPhone: ${error.message}. Por favor, intenta de nuevo o elige otra forma de pago.`);
+                    }
                     convoState.estado = 'PIDIENDO_FORMA_PAGO';
                 }
             } else {
@@ -698,8 +721,8 @@ client.on('message', async (message) => {
                         }
                     ]);
 
-                if (supabaseInsertError) {
-                    console.error('Error al guardar transferencia pendiente en Supabase:', error);
+                if (supabaseInsertError) { // <<< CORREGIDO: Usar la variable de error correcta
+                    console.error('Error al guardar transferencia pendiente en Supabase:', supabaseInsertError); // <<< Log también corregido
                     await client.sendMessage(from, 'Lo siento, hubo un problema técnico al registrar tu comprobante. Por favor, intenta de nuevo o contacta a un agente.');
                     convoState.estado = 'ASISTENCIA_HUMANA';
                     conversations[from] = convoState;
