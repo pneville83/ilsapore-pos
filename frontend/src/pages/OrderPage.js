@@ -16,10 +16,21 @@ function OrderPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [submitMessage, setSubmitMessage] = useState('');
     
-    // ¡NUEVO ESTADO! Para manejar múltiples pagos
+    // Estado para manejar múltiples pagos
     const [pagos, setPagos] = useState([{ forma_pago: 'Efectivo', monto: '' }]);
 
-    const optionsArray = Array.from({ length: 50 }, (_, i) => i + 1);
+    // --- CONFIGURACIÓN DE OPCIONES DE DIRECCIÓN ---
+    // Generamos las opciones para Manzana (Aplicación + 1 al 40)
+    const mzOptions = useMemo(() => [
+        'Aplicación', 
+        ...Array.from({ length: 40 }, (_, i) => (i + 1).toString())
+    ], []);
+
+    // Generamos las opciones para Villa (Pedidos Ya + 1 al 50)
+    const villaOptions = useMemo(() => [
+        'Pedidos Ya', 
+        ...Array.from({ length: 50 }, (_, i) => (i + 1).toString())
+    ], []);
 
     // --- EFECTOS Y DATOS MEMORIZADOS ---
     useEffect(() => {
@@ -107,6 +118,8 @@ function OrderPage() {
 
     const handleGenerarPedido = async () => {
         if (carrito.length === 0) return alert('El pedido está vacío.');
+        
+        // Validación de montos (con pequeño margen de error por decimales)
         if (restantePorPagar > 0.01) return alert(`Aún faltan $${restantePorPagar.toFixed(2)} por pagar.`);
         if (restantePorPagar < -0.01) return alert(`El monto pagado excede el total por $${Math.abs(restantePorPagar).toFixed(2)}. Por favor, ajuste los montos.`);
 
@@ -114,7 +127,7 @@ function OrderPage() {
         setSubmitMessage('');
 
         const pedido = {
-            productos: carrito.map(({ cartId, ...resto }) => resto), // Excluye el cartId
+            productos: carrito.map(({ cartId, ...resto }) => resto), 
             pagos: pagos.filter(p => parseFloat(p.monto) > 0),
             direccion_mz: direccionMz,
             direccion_villa: direccionVilla,
@@ -209,15 +222,20 @@ function OrderPage() {
                     <h4>Dirección de Entrega</h4>
                     <label>Manzana (Mz):</label>
                     <select value={direccionMz} onChange={e => setDireccionMz(e.target.value)}>
-                        {optionsArray.map(num => <option key={num} value={num}>{num}</option>)}
+                        {mzOptions.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                        ))}
                     </select>
+
                     <label>Villa:</label>
                     <select value={direccionVilla} onChange={e => setDireccionVilla(e.target.value)}>
-                        {optionsArray.map(num => <option key={num} value={num}>{num}</option>)}
+                        {villaOptions.map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                        ))}
                     </select>
 
                     <h4>Observaciones</h4>
-                    <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ej: sin cebolla..." rows="3" />
+                    <textarea value={observaciones} onChange={e => setObservaciones(e.target.value)} placeholder="Ej: sin cebolla o detalles de Pedidos Ya..." rows="3" />
                     
                     <button onClick={handleGenerarPedido} disabled={isSubmitting || carrito.length === 0} style={{ width: '100%', marginTop: '20px', padding: '15px' }}>
                         {isSubmitting ? 'Generando...' : 'Generar e Imprimir Pedido'}

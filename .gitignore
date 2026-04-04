@@ -2,6 +2,8 @@
 /node_modules
 /backend/node_modules
 /frontend/node_modules
+whatsapp-bot/.wwebjs_auth/
+whatsapp-bot/.wwebjs_cache/
 
 # Archivos de entorno
 .env
