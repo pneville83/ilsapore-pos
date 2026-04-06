@@ -1,5 +1,3 @@
-// frontend/src/pages/OrderPage.js
-
 import React, { useState, useEffect, useMemo } from 'react';
 import api from '../services/api';
 import './OrderPage.css';
@@ -20,13 +18,11 @@ function OrderPage() {
     const [pagos, setPagos] = useState([{ forma_pago: 'Efectivo', monto: '' }]);
 
     // --- CONFIGURACIÓN DE OPCIONES DE DIRECCIÓN ---
-    // Generamos las opciones para Manzana (Aplicación + 1 al 40)
     const mzOptions = useMemo(() => [
         'Aplicación', 
         ...Array.from({ length: 40 }, (_, i) => (i + 1).toString())
     ], []);
 
-    // Generamos las opciones para Villa (Pedidos Ya + 1 al 50)
     const villaOptions = useMemo(() => [
         'Pedidos Ya', 
         ...Array.from({ length: 50 }, (_, i) => (i + 1).toString())
@@ -80,7 +76,6 @@ function OrderPage() {
         }
     };
     
-    // --- LÓGICA DEL CARRITO Y PEDIDOS ---
     const agregarAlCarrito = (itemParaAgregar) => {
         setCarrito(prev => {
             const existente = prev.find(item => item.cartId === itemParaAgregar.cartId);
@@ -118,8 +113,6 @@ function OrderPage() {
 
     const handleGenerarPedido = async () => {
         if (carrito.length === 0) return alert('El pedido está vacío.');
-        
-        // Validación de montos (con pequeño margen de error por decimales)
         if (restantePorPagar > 0.01) return alert(`Aún faltan $${restantePorPagar.toFixed(2)} por pagar.`);
         if (restantePorPagar < -0.01) return alert(`El monto pagado excede el total por $${Math.abs(restantePorPagar).toFixed(2)}. Por favor, ajuste los montos.`);
 
@@ -145,7 +138,6 @@ function OrderPage() {
         }
     };
 
-    // --- RENDERIZADO DEL COMPONENTE ---
     return (
         <>
             {productoParaVariacion && (
@@ -204,6 +196,7 @@ function OrderPage() {
                                 <option value="Efectivo">Efectivo</option>
                                 <option value="Transferencia">Transferencia</option>
                                 <option value="Tarjeta">Tarjeta</option>
+                                <option value="Pedidos Ya">Pedidos Ya</option> {/* AÑADIDO */}
                             </select>
                             <input type="number" step="0.01" name="monto" value={pago.monto} onChange={e => handlePagoChange(index, e)} placeholder="Monto" />
                             {pagos.length > 1 && (<button onClick={() => removePago(index)}>×</button>)}

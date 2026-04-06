@@ -148,7 +148,7 @@ router.get('/ubicaciones', async (req, res) => {
     try { const { rows } = await db.query('SELECT id, nombre FROM ubicaciones ORDER BY nombre ASC;'); res.json(rows); } catch (err) { console.error('Error al obtener ubicaciones:', err); res.status(500).send('Error en el servidor.'); }
 });
 
-// --- RUTAS DE FINANZAS (COMPLETAS) ---
+// --- RUTAS DE FINANZAS ---
 router.get('/finanzas/saldos', async (req, res) => {
     const { rol, ubicacion_id } = req.auth;
     const ubicacionFiltro = (rol === 'superadmin' && req.query.ubicacion_id) ? req.query.ubicacion_id : ubicacion_id;
@@ -159,12 +159,14 @@ router.get('/finanzas/saldos', async (req, res) => {
             query = `${baseQuery} GROUP BY cuenta;`;
             params = [];
         } else {
-            if (!ubicacionFiltro) return res.json({ 'Efectivo': { balance: 0 }, 'Transferencia': { balance: 0 }, 'Tarjeta': { balance: 0 } });
+            // Actualizado para incluir Pedidos Ya en respuesta vacía
+            if (!ubicacionFiltro) return res.json({ 'Efectivo': { balance: 0 }, 'Transferencia': { balance: 0 }, 'Tarjeta': { balance: 0 }, 'Pedidos Ya': { balance: 0 } });
             query = `${baseQuery} WHERE ubicacion_id = $1 GROUP BY cuenta;`;
             params = [ubicacionFiltro];
         }
         const { rows } = await db.query(query, params);
-        const saldos = { 'Efectivo': { balance: 0 }, 'Transferencia': { balance: 0 }, 'Tarjeta': { balance: 0 } };
+        // ACTUALIZADO: Se añade Pedidos Ya al objeto inicial
+        const saldos = { 'Efectivo': { balance: 0 }, 'Transferencia': { balance: 0 }, 'Tarjeta': { balance: 0 }, 'Pedidos Ya': { balance: 0 } };
         rows.forEach(row => { if (saldos[row.cuenta]) { saldos[row.cuenta].balance = parseFloat(row.balance); } });
         res.json(saldos);
     } catch (err) { console.error('Error al obtener saldos:', err); res.status(500).send('Error en el servidor'); }
@@ -179,7 +181,6 @@ router.get('/finanzas/historial', async (req, res) => {
         let params = [];
         let paramIndex = 1;
 
-        // Filtro de Ubicación
         if (rol === 'superadmin' && ubicacionFiltro) {
             whereClauses.push(`t.ubicacion_id = $${paramIndex++}`);
             params.push(ubicacionFiltro);
@@ -188,14 +189,11 @@ router.get('/finanzas/historial', async (req, res) => {
             params.push(ubicacion_id);
         }
 
-        // Filtro de Fecha
         if (fecha_inicio && fecha_fin) {
-            // Se usa el método de intervalo UTC que ya validamos que funciona
             whereClauses.push(`t.fecha >= $${paramIndex++} AND t.fecha < $${paramIndex++}`);
             params.push(fecha_inicio, fecha_fin);
         }
 
-        // Filtro de Cuenta
         if (cuenta) {
             whereClauses.push(`t.cuenta = $${paramIndex++}`);
             params.push(cuenta);
@@ -299,12 +297,10 @@ router.delete('/finanzas/transaccion/:id', async (req, res) => {
     }
 });
 
-// --- RUTAS DE REPORTES (CON LÓGICA DE ZONA HORARIA Y FILTRO DE UBICACIÓN COMPLETOS) ---
+// --- RUTAS DE REPORTES ---
 const buildReportWhereClause = (rol, ubicacion_id, ubicacionFiltro, aliasTabla) => {
-    // Usamos $1 y $2 para los timestamps, el resto empieza en $3
     let whereClauses = [`${aliasTabla}.fecha >= $1 AND ${aliasTabla}.fecha < $2`];
     let params = [];
-    
     if (rol === 'superadmin' && ubicacionFiltro) {
         whereClauses.push(`${aliasTabla}.ubicacion_id = $${params.length + 3}`);
         params.push(ubicacionFiltro);
@@ -312,7 +308,6 @@ const buildReportWhereClause = (rol, ubicacion_id, ubicacionFiltro, aliasTabla) 
         whereClauses.push(`${aliasTabla}.ubicacion_id = $${params.length + 3}`);
         params.push(ubicacion_id);
     }
-    
     return { whereClause: whereClauses.join(' AND '), params };
 };
 router.get('/reportes/cierre-caja', async (req, res) => {
@@ -322,8 +317,20 @@ router.get('/reportes/cierre-caja', async (req, res) => {
     try {
         const query = `SELECT cuenta, COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE 0 END), 0) as ingresos, COALESCE(SUM(CASE WHEN tipo = 'Egreso' THEN monto ELSE 0 END), 0) as gastos FROM transacciones WHERE ${whereClause} GROUP BY cuenta;`;
         const { rows } = await db.query(query, [fecha_inicio, fecha_fin, ...params]);
-        const resultado = { 'Efectivo': { ingresos: 0, gastos: 0, balance: 0 }, 'Transferencia': { ingresos: 0, gastos: 0, balance: 0 }, 'Tarjeta': { ingresos: 0, gastos: 0, balance: 0 } };
-        rows.forEach(row => { if (resultado[row.cuenta]) { resultado[row.cuenta].ingresos = parseFloat(row.ingresos); resultado[row.cuenta].gastos = parseFloat(row.gastos); resultado[row.cuenta].balance = parseFloat(row.ingresos) - parseFloat(row.gastos); } });
+        // ACTUALIZADO: Se añade Pedidos Ya al objeto inicial de reporte
+        const resultado = { 
+            'Efectivo': { ingresos: 0, gastos: 0, balance: 0 }, 
+            'Transferencia': { ingresos: 0, gastos: 0, balance: 0 }, 
+            'Tarjeta': { ingresos: 0, gastos: 0, balance: 0 },
+            'Pedidos Ya': { ingresos: 0, gastos: 0, balance: 0 } 
+        };
+        rows.forEach(row => { 
+            if (resultado[row.cuenta]) { 
+                resultado[row.cuenta].ingresos = parseFloat(row.ingresos); 
+                resultado[row.cuenta].gastos = parseFloat(row.gastos); 
+                resultado[row.cuenta].balance = parseFloat(row.ingresos) - parseFloat(row.gastos); 
+            } 
+        });
         res.json(resultado);
     } catch (err) { console.error('Error generando cierre de caja:', err); res.status(500).send('Error en el servidor'); }
 });
@@ -332,9 +339,6 @@ router.get('/reportes/productos-vendidos', async (req, res) => {
     const { fecha_inicio, fecha_fin, ubicacion_id: ubicacionQuery } = req.query;
     const { whereClause, params } = buildReportWhereClause(rol, ubicacion_id, ubicacionQuery, 'ped');
     try {
-        // --- ¡CONSULTA CORREGIDA! ---
-        // Sumamos el valor real de cada línea de producto (cantidad * precio_unitario)
-        // en lugar del total de la transacción.
         const query = `
             SELECT 
                 p.nombre, 

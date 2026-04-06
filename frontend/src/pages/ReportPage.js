@@ -1,10 +1,7 @@
-// frontend/src/pages/ReportPage.js
-
 import React, { useState } from 'react';
 import DatePicker from 'react-datepicker';
 import api from '../services/api';
 import { exportToExcel } from '../utils/exportUtils';
-// Ya no se importa 'useLocation'
 
 function ReportPage() {
     const [startDate, setStartDate] = useState(new Date());
@@ -13,8 +10,6 @@ function ReportPage() {
     const [reportData, setReportData] = useState(null);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState('');
-
-    // Se elimina la lógica del 'useEffect' que dependía del contexto
 
     const handleGenerateReport = async () => {
         setIsLoading(true);
@@ -31,7 +26,6 @@ function ReportPage() {
         
         try {
             let response;
-            // Las llamadas a la API ahora son simples. El interceptor se encarga del filtro.
             if (reportType === 'cierre-caja') {
                 response = await api.getReporteCierreCaja(fecha_inicio_utc, fecha_fin_utc);
             } else if (reportType === 'productos-vendidos') {

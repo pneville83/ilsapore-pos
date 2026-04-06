@@ -1,12 +1,15 @@
-// frontend/src/pages/FinancePage.js
-
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import DatePicker from 'react-datepicker';
 import './FinancePage.css';
 
 function FinancePage() {
-    const [saldos, setSaldos] = useState({ 'Efectivo': { balance: 0 }, 'Transferencia': { balance: 0 }, 'Tarjeta': { balance: 0 } });
+    const [saldos, setSaldos] = useState({ 
+        'Efectivo': { balance: 0 }, 
+        'Transferencia': { balance: 0 }, 
+        'Tarjeta': { balance: 0 },
+        'Pedidos Ya': { balance: 0 } // AÑADIDO
+    });
     const [historial, setHistorial] = useState([]);
     const [statusMessage, setStatusMessage] = useState('');
     const [descripcion, setDescripcion] = useState('');
@@ -115,7 +118,8 @@ function FinancePage() {
                             <select value={editingTransaction.cuenta} onChange={(e) => setEditingTransaction({...editingTransaction, cuenta: e.target.value})}>
                                 <option value="Efectivo">Efectivo</option>
                                 <option value="Transferencia">Transferencia</option>
-                                <option value="Tarjeta">Tarjeta</option> {/* <<< AÑADIDO: Opción para editar */}
+                                <option value="Tarjeta">Tarjeta</option>
+                                <option value="Pedidos Ya">Pedidos Ya</option> {/* AÑADIDO */}
                             </select>
                             <div className="edit-modal-buttons">
                                 <button type="submit">Guardar Cambios</button>
@@ -147,7 +151,8 @@ function FinancePage() {
                         <select value={cuenta} onChange={(e) => setCuenta(e.target.value)}>
                             <option value="Efectivo">Efectivo</option>
                             <option value="Transferencia">Transferencia</option>
-                            <option value="Tarjeta">Tarjeta</option> {/* <<< AÑADIDO: Opción para registrar nuevo egreso */}
+                            <option value="Tarjeta">Tarjeta</option>
+                            <option value="Pedidos Ya">Pedidos Ya</option> {/* AÑADIDO */}
                         </select>
                         <button type="submit" style={{width: '100%', marginTop: '10px'}}>Guardar Egreso</button>
                     </form>
@@ -158,7 +163,16 @@ function FinancePage() {
                     <div className="finance-filters">
                         <div><label>Desde:</label><DatePicker selected={startDate} onChange={date => setStartDate(date)} isClearable placeholderText="Fecha de inicio" dateFormat="dd/MM/yyyy"/></div>
                         <div><label>Hasta:</label><DatePicker selected={endDate} onChange={date => setEndDate(date)} isClearable placeholderText="Fecha de fin" dateFormat="dd/MM/yyyy"/></div>
-                        <div><label>Cuenta:</label><select value={cuentaFiltro} onChange={e => setCuentaFiltro(e.target.value)}><option value="">Todas</option><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option><option value="Tarjeta">Tarjeta</option></select></div> {/* <<< AÑADIDO: Opción para filtrar */}
+                        <div>
+                            <label>Cuenta:</label>
+                            <select value={cuentaFiltro} onChange={e => setCuentaFiltro(e.target.value)}>
+                                <option value="">Todas</option>
+                                <option value="Efectivo">Efectivo</option>
+                                <option value="Transferencia">Transferencia</option>
+                                <option value="Tarjeta">Tarjeta</option>
+                                <option value="Pedidos Ya">Pedidos Ya</option> {/* AÑADIDO */}
+                            </select>
+                        </div>
                         <button type="button" onClick={clearFilters} style={{backgroundColor: 'var(--secondary-color)'}}>Limpiar Filtros</button>
                     </div>
                     <div className="table-container">
