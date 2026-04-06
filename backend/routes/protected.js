@@ -159,13 +159,11 @@ router.get('/finanzas/saldos', async (req, res) => {
             query = `${baseQuery} GROUP BY cuenta;`;
             params = [];
         } else {
-            // Actualizado para incluir Pedidos Ya en respuesta vacía
             if (!ubicacionFiltro) return res.json({ 'Efectivo': { balance: 0 }, 'Transferencia': { balance: 0 }, 'Tarjeta': { balance: 0 }, 'Pedidos Ya': { balance: 0 } });
             query = `${baseQuery} WHERE ubicacion_id = $1 GROUP BY cuenta;`;
             params = [ubicacionFiltro];
         }
         const { rows } = await db.query(query, params);
-        // ACTUALIZADO: Se añade Pedidos Ya al objeto inicial
         const saldos = { 'Efectivo': { balance: 0 }, 'Transferencia': { balance: 0 }, 'Tarjeta': { balance: 0 }, 'Pedidos Ya': { balance: 0 } };
         rows.forEach(row => { if (saldos[row.cuenta]) { saldos[row.cuenta].balance = parseFloat(row.balance); } });
         res.json(saldos);
@@ -201,11 +199,13 @@ router.get('/finanzas/historial', async (req, res) => {
 
         const whereString = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '';
         
+        // --- CAMBIO AQUÍ: Agregamos p.observaciones ---
         const query = `
             SELECT 
                 t.id, t.fecha, t.descripcion, t.tipo, t.cuenta, t.monto, t.pedido_id,
                 p.direccion_mz,
                 p.direccion_villa,
+                p.observaciones,
                 (SELECT json_agg(
                     json_build_object(
                         'cantidad', dp.cantidad, 
@@ -317,7 +317,6 @@ router.get('/reportes/cierre-caja', async (req, res) => {
     try {
         const query = `SELECT cuenta, COALESCE(SUM(CASE WHEN tipo = 'Ingreso' THEN monto ELSE 0 END), 0) as ingresos, COALESCE(SUM(CASE WHEN tipo = 'Egreso' THEN monto ELSE 0 END), 0) as gastos FROM transacciones WHERE ${whereClause} GROUP BY cuenta;`;
         const { rows } = await db.query(query, [fecha_inicio, fecha_fin, ...params]);
-        // ACTUALIZADO: Se añade Pedidos Ya al objeto inicial de reporte
         const resultado = { 
             'Efectivo': { ingresos: 0, gastos: 0, balance: 0 }, 
             'Transferencia': { ingresos: 0, gastos: 0, balance: 0 }, 

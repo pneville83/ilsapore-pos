@@ -1,15 +1,20 @@
+// frontend/src/pages/FinancePage.js
+
 import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import DatePicker from 'react-datepicker';
 import './FinancePage.css';
 
 function FinancePage() {
-    const [saldos, setSaldos] = useState({ 
+    // 1. Definimos las cuentas que SIEMPRE deben existir (para que no desaparezcan)
+    const CUENTAS_BASE = { 
         'Efectivo': { balance: 0 }, 
         'Transferencia': { balance: 0 }, 
         'Tarjeta': { balance: 0 },
-        'Pedidos Ya': { balance: 0 } // AÑADIDO
-    });
+        'Pedidos Ya': { balance: 0 } 
+    };
+
+    const [saldos, setSaldos] = useState(CUENTAS_BASE);
     const [historial, setHistorial] = useState([]);
     const [statusMessage, setStatusMessage] = useState('');
     const [descripcion, setDescripcion] = useState('');
@@ -39,7 +44,11 @@ function FinancePage() {
                 api.getSaldos(), 
                 api.getHistorialTransacciones(filtros)
             ]);
-            setSaldos(saldosRes.data);
+
+            // FUSIONAR: Esto evita que Pedidos Ya desaparezca si el back no manda info
+            const saldosFusionados = { ...CUENTAS_BASE, ...saldosRes.data };
+            
+            setSaldos(saldosFusionados);
             setHistorial(historialRes.data);
             setStatusMessage('');
         } catch (error) { 
@@ -119,7 +128,7 @@ function FinancePage() {
                                 <option value="Efectivo">Efectivo</option>
                                 <option value="Transferencia">Transferencia</option>
                                 <option value="Tarjeta">Tarjeta</option>
-                                <option value="Pedidos Ya">Pedidos Ya</option> {/* AÑADIDO */}
+                                <option value="Pedidos Ya">Pedidos Ya</option>
                             </select>
                             <div className="edit-modal-buttons">
                                 <button type="submit">Guardar Cambios</button>
@@ -147,12 +156,12 @@ function FinancePage() {
                         <textarea value={descripcion} onChange={(e) => setDescripcion(e.target.value)} required rows="3" />
                         <label>Monto ($):</label>
                         <input type="number" step="0.01" value={monto} onChange={(e) => setMonto(e.target.value)} required />
-                        <label>Pagar desde la cuenta de:</label>
+                        <label>Pagar desde:</label>
                         <select value={cuenta} onChange={(e) => setCuenta(e.target.value)}>
                             <option value="Efectivo">Efectivo</option>
                             <option value="Transferencia">Transferencia</option>
                             <option value="Tarjeta">Tarjeta</option>
-                            <option value="Pedidos Ya">Pedidos Ya</option> {/* AÑADIDO */}
+                            <option value="Pedidos Ya">Pedidos Ya</option>
                         </select>
                         <button type="submit" style={{width: '100%', marginTop: '10px'}}>Guardar Egreso</button>
                     </form>
@@ -163,16 +172,7 @@ function FinancePage() {
                     <div className="finance-filters">
                         <div><label>Desde:</label><DatePicker selected={startDate} onChange={date => setStartDate(date)} isClearable placeholderText="Fecha de inicio" dateFormat="dd/MM/yyyy"/></div>
                         <div><label>Hasta:</label><DatePicker selected={endDate} onChange={date => setEndDate(date)} isClearable placeholderText="Fecha de fin" dateFormat="dd/MM/yyyy"/></div>
-                        <div>
-                            <label>Cuenta:</label>
-                            <select value={cuentaFiltro} onChange={e => setCuentaFiltro(e.target.value)}>
-                                <option value="">Todas</option>
-                                <option value="Efectivo">Efectivo</option>
-                                <option value="Transferencia">Transferencia</option>
-                                <option value="Tarjeta">Tarjeta</option>
-                                <option value="Pedidos Ya">Pedidos Ya</option> {/* AÑADIDO */}
-                            </select>
-                        </div>
+                        <div><label>Cuenta:</label><select value={cuentaFiltro} onChange={e => setCuentaFiltro(e.target.value)}><option value="">Todas</option><option value="Efectivo">Efectivo</option><option value="Transferencia">Transferencia</option><option value="Tarjeta">Tarjeta</option><option value="Pedidos Ya">Pedidos Ya</option></select></div>
                         <button type="button" onClick={clearFilters} style={{backgroundColor: 'var(--secondary-color)'}}>Limpiar Filtros</button>
                     </div>
                     <div className="table-container">
@@ -190,6 +190,13 @@ function FinancePage() {
                                                 <div className="transaction-details">
                                                     <ul className="product-list">{t.productos.map((prod, index) => (<li key={index}>{prod.cantidad}x {prod.nombre} {prod.nombre_variacion ? `(${prod.nombre_variacion})` : ''}</li>))}</ul>
                                                     <div className="address-detail">Mz: {t.direccion_mz}, Villa: {t.direccion_villa}</div>
+                                                    
+                                                    {/* --- AQUÍ SE MUESTRAN LAS OBSERVACIONES --- */}
+                                                    {t.observaciones && (
+                                                        <div className="obs-detail" style={{ marginTop: '5px', padding: '4px', backgroundColor: '#fff9c4', borderLeft: '3px solid #fbc02d', fontStyle: 'italic', fontSize: '0.8rem' }}>
+                                                            <strong>Nota:</strong> {t.observaciones}
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ) : (<span>-</span>)}
                                         </td>

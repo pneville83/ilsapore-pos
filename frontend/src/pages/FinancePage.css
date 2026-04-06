@@ -85,3 +85,15 @@
     margin-bottom: 0;
     padding: 8px;
 }
+
+.obs-detail {
+    margin-top: 8px;
+    padding: 6px 10px;
+    background-color: #fff9c4; /* Color amarillo suave */
+    border-left: 4px solid #fbc02d; /* Borde naranja/amarillo fuerte */
+    border-radius: 4px;
+    font-size: 0.85rem;
+    color: #333;
+    line-height: 1.4;
+    word-break: break-word; /* Para que el texto largo no se salga */
+}
