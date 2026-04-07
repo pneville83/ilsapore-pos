@@ -4,9 +4,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import api from '../services/api';
 import DatePicker from 'react-datepicker';
 import './FinancePage.css';
+// Se importa la utilidad de sesión para leer el filtro de ubicación
+import { getLocationFilter } from '../utils/sessionUtils'; 
 
 function FinancePage() {
-    // 1. Definimos las cuentas que SIEMPRE deben existir (para que no desaparezcan)
+    // 1. Cuentas base que siempre deben mostrarse
     const CUENTAS_BASE = { 
         'Efectivo': { balance: 0 }, 
         'Transferencia': { balance: 0 }, 
@@ -14,6 +16,7 @@ function FinancePage() {
         'Pedidos Ya': { balance: 0 } 
     };
 
+    // --- Estados del componente ---
     const [saldos, setSaldos] = useState(CUENTAS_BASE);
     const [historial, setHistorial] = useState([]);
     const [statusMessage, setStatusMessage] = useState('');
@@ -25,10 +28,28 @@ function FinancePage() {
     const [endDate, setEndDate] = useState(null);
     const [cuentaFiltro, setCuentaFiltro] = useState('');
 
+    // Se obtiene el ID de la ubicación y el rol del usuario directamente
+    const selectedLocationId = getLocationFilter(); 
+    const userInfo = JSON.parse(localStorage.getItem('userInfo'));
+    const userRole = userInfo ? userInfo.rol : null;
+
+    // --- Lógica de carga de datos ---
     const fetchData = useCallback(async () => {
+        // Si es superadmin y no ha elegido local, muestra un mensaje y no carga datos.
+        if (userRole === 'superadmin' && !selectedLocationId) {
+            setSaldos(CUENTAS_BASE);
+            setHistorial([]);
+            setStatusMessage('Por favor, selecciona una ubicación para ver los datos.');
+            return;
+        }
+
         try {
             setStatusMessage('Cargando datos...');
-            const filtros = {};
+
+            // Se construyen los filtros combinando la ubicación con las fechas y la cuenta
+            const filtros = {
+                ubicacion_id: selectedLocationId 
+            };
             if (startDate && endDate) {
                 const startOfDay = new Date(startDate);
                 startOfDay.setHours(0, 0, 0, 0);
@@ -40,12 +61,13 @@ function FinancePage() {
             if (cuentaFiltro) {
                 filtros.cuenta = cuentaFiltro;
             }
+
+            // Las llamadas a la API ahora envían el objeto de filtros completo
             const [saldosRes, historialRes] = await Promise.all([
-                api.getSaldos(), 
+                api.getSaldos(filtros), 
                 api.getHistorialTransacciones(filtros)
             ]);
 
-            // FUSIONAR: Esto evita que Pedidos Ya desaparezca si el back no manda info
             const saldosFusionados = { ...CUENTAS_BASE, ...saldosRes.data };
             
             setSaldos(saldosFusionados);
@@ -55,17 +77,28 @@ function FinancePage() {
             console.error("Error al cargar datos financieros:", error);
             setStatusMessage('Error al cargar datos.'); 
         }
-    }, [startDate, endDate, cuentaFiltro]);
+    }, [startDate, endDate, cuentaFiltro, userRole, selectedLocationId]);
 
     useEffect(() => { 
         fetchData();
     }, [fetchData]);
 
+    // --- Manejadores de eventos ---
     const handleSubmitEgreso = async (e) => {
         e.preventDefault();
         if (!descripcion || !monto) return alert('Por favor, complete todos los campos.');
+        if (userRole === 'superadmin' && !selectedLocationId) {
+            return alert('Como Super Admin, por favor selecciona una ubicación para registrar el egreso.');
+        }
         try {
-            await api.crearTransaccion({ descripcion, monto, cuenta, tipo: 'Egreso' });
+            // Se envía el `ubicacion_id` al crear la transacción
+            await api.crearTransaccion({ 
+                descripcion, 
+                monto, 
+                cuenta, 
+                tipo: 'Egreso',
+                ubicacion_id: selectedLocationId 
+            });
             setStatusMessage('Egreso registrado con éxito.');
             setDescripcion(''); setMonto('');
             fetchData();
@@ -165,7 +198,7 @@ function FinancePage() {
                         </select>
                         <button type="submit" style={{width: '100%', marginTop: '10px'}}>Guardar Egreso</button>
                     </form>
-                    {statusMessage && <p>{statusMessage}</p>}
+                    {statusMessage && <p className="status-message">{statusMessage}</p>}
                 </div>
                 <div className="transaction-history-panel">
                     <h2>Historial de Transacciones</h2>
@@ -181,33 +214,38 @@ function FinancePage() {
                                 <tr><th>Fecha</th><th>Descripción</th><th>Detalles del Pedido</th><th>Cuenta</th><th>Monto</th><th>Acciones</th></tr>
                             </thead>
                             <tbody>
-                                {historial.map(t => (
-                                    <tr key={t.id}>
-                                        <td>{new Date(t.fecha).toLocaleString()}</td>
-                                        <td>{t.descripcion}</td>
-                                        <td>
-                                            {t.productos && t.productos.length > 0 ? (
-                                                <div className="transaction-details">
-                                                    <ul className="product-list">{t.productos.map((prod, index) => (<li key={index}>{prod.cantidad}x {prod.nombre} {prod.nombre_variacion ? `(${prod.nombre_variacion})` : ''}</li>))}</ul>
-                                                    <div className="address-detail">Mz: {t.direccion_mz}, Villa: {t.direccion_villa}</div>
-                                                    
-                                                    {/* --- AQUÍ SE MUESTRAN LAS OBSERVACIONES --- */}
-                                                    {t.observaciones && (
-                                                        <div className="obs-detail" style={{ marginTop: '5px', padding: '4px', backgroundColor: '#fff9c4', borderLeft: '3px solid #fbc02d', fontStyle: 'italic', fontSize: '0.8rem' }}>
-                                                            <strong>Nota:</strong> {t.observaciones}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            ) : (<span>-</span>)}
-                                        </td>
-                                        <td>{t.cuenta}</td>
-                                        <td className={`amount-cell ${t.tipo === 'Ingreso' ? 'income' : 'expense'}`}>{t.tipo === 'Ingreso' ? '+' : '-'} {formatCurrency(t.monto)}</td>
-                                        <td className="action-cell">
-                                            <button className="edit-btn" onClick={() => handleEdit(t)}>Editar</button>
-                                            <button onClick={() => handleDelete(t)}>Eliminar</button>
-                                        </td>
+                                {historial.length > 0 ? (
+                                    historial.map(t => (
+                                        <tr key={t.id}>
+                                            <td>{new Date(t.fecha).toLocaleString()}</td>
+                                            <td>{t.descripcion}</td>
+                                            <td>
+                                                {t.productos && t.productos.length > 0 ? (
+                                                    <div className="transaction-details">
+                                                        <ul className="product-list">{t.productos.map((prod, index) => (<li key={index}>{prod.cantidad}x {prod.nombre} {prod.nombre_variacion ? `(${prod.nombre_variacion})` : ''}</li>))}</ul>
+                                                        <div className="address-detail">Mz: {t.direccion_mz}, Villa: {t.direccion_villa}</div>
+                                                        
+                                                        {t.observaciones && (
+                                                            <div className="obs-detail" style={{ marginTop: '5px', padding: '4px', backgroundColor: '#fff9c4', borderLeft: '3px solid #fbc02d', fontStyle: 'italic', fontSize: '0.8rem' }}>
+                                                                <strong>Nota:</strong> {t.observaciones}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ) : (<span>-</span>)}
+                                            </td>
+                                            <td>{t.cuenta}</td>
+                                            <td className={`amount-cell ${t.tipo === 'Ingreso' ? 'income' : 'expense'}`}>{t.tipo === 'Ingreso' ? '+' : '-'} {formatCurrency(t.monto)}</td>
+                                            <td className="action-cell">
+                                                <button className="edit-btn" onClick={() => handleEdit(t)}>Editar</button>
+                                                <button onClick={() => handleDelete(t)}>Eliminar</button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                ) : (
+                                    <tr>
+                                        <td colSpan="6" style={{ textAlign: 'center' }}>No hay transacciones para mostrar con los filtros actuales.</td>
                                     </tr>
-                                ))}
+                                )}
                             </tbody>
                         </table>
                     </div>
@@ -216,4 +254,5 @@ function FinancePage() {
         </div>
     );
 }
+
 export default FinancePage;
