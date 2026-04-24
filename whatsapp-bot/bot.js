@@ -102,12 +102,44 @@ const conversations = {};
 // --- Cargamos los datos de los bancos al iniciar ---
 const datosBancarios = JSON.parse(fs.readFileSync('bancos.json', 'utf8'));
 
+// --- INICIALIZACIÓN DEL CLIENTE (Modificada para compatibilidad actual) ---
 const client = new Client({
     authStrategy: new LocalAuth(),
-    puppeteer: { headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] }
+    puppeteer: { 
+        headless: true, 
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--no-first-run',
+            '--no-zygote',
+            '--single-process',
+            '--disable-gpu'
+        ] 
+    },
+    // RE-AÑADE ESTO SI USAS @LATEST:
+    webVersionCache: {
+        type: 'remote',
+        remotePath: 'https://raw.githubusercontent.com/wppconnect-team/wa-version/main/html/2.2412.54.html',
+    }
+});
+
+// Logs de estado adicionales para diagnóstico
+client.on('loading_screen', (percent, message) => {
+    console.log('Sincronizando WhatsApp:', percent, '% -', message);
+});
+
+client.on('authenticated', () => {
+    console.log('✅ Sesión de WhatsApp autenticada correctamente.');
+});
+
+client.on('auth_failure', msg => {
+    console.error('❌ Error de autenticación, necesitas re-escanear:', msg);
 });
 
 client.on('qr', qr => qrcode.generate(qr, { small: true }));
+
 client.on('ready', async () => {
     console.log('✅ ¡El bot de Il Sapore está en línea!');
     try {
@@ -171,18 +203,24 @@ client.on('message', async (message) => {
     console.log(`Mensaje de ${from}: "${content}" (Estado PREVIO: ${conversations[from]?.estado || 'INICIO'})`);
 
     // --- LÓGICA PARA EL NÚMERO DE GESTIÓN DE CUENTAS ---
+    // Este log te confirmará en la consola si el bot te reconoce
     if (from === NUMERO_GESTION_CUENTAS) {
-        const confirmMatch = content.match(/confirmar\s+(?:trf-)?([a-z0-9]{4,15})/); // Acepta IDs de 4 a 15 caracteres
-        const problemMatch = content.match(/problema\s+(?:trf-)?([a-z0-9]{4,15})/); // Acepta IDs de 4 a 15 caracteres
+        console.log(`[ADMIN] ¡Acceso concedido! Comando recibido: "${content}"`);
+
+        // Buscamos el código de la transferencia (ej: A922)
+        const confirmMatch = content.match(/confirmar\s+(?:trf-)?([a-z0-9]{4,15})/i);
+        const problemMatch = content.match(/problema\s+(?:trf-)?([a-z0-9]{4,15})/i);
 
         if (confirmMatch && confirmMatch[1]) {
             const tempOrderId = confirmMatch[1].toUpperCase();
-            await processTransferConfirmation(tempOrderId, true); // No hay parámetro isPayphone en este flujo
+            console.log(`[ADMIN] Confirmando pedido temporal: ${tempOrderId}`);
+            await processTransferConfirmation(tempOrderId, true);
         } else if (problemMatch && problemMatch[1]) {
             const tempOrderId = problemMatch[1].toUpperCase();
-            await processTransferConfirmation(tempOrderId, false); // No hay parámetro isPayphone en este flujo
+            console.log(`[ADMIN] Reportando problema en pedido: ${tempOrderId}`);
+            await processTransferConfirmation(tempOrderId, false);
         } else {
-            await client.sendMessage(from, 'Comando no reconocido. Usa "CONFIRMAR TRF-[ID]" o "PROBLEMA TRF-[ID]". El ID debe ser de 4 a 15 caracteres alfanuméricos.');
+            await client.sendMessage(from, 'Comando no reconocido. Escribe: "Confirmar trf-A922" (reemplaza A922 por el código del mensaje).');
         }
         return;
     }
@@ -212,8 +250,14 @@ client.on('message', async (message) => {
         try {
             const response = await apiClient.get('/productos/disponibles');
             const productos = response.data;
-            const categoriasExcluidas = 'adicionales';
-            let categorias = [...new Set(productos.map(p => p.categoria))].filter(cat => !categoriasExcluidas.includes(cat.toLowerCase()));
+
+            // --- CATEGORÍAS EXCLUIDAS ACTUALIZADAS ---
+            const categoriasExcluidas = ['adicionales', 'BEBIDAS', 'ensaladas', 'PED YA COMBOS', 'PED YA HAMB', 'PED YA PAPAS', 'PED YA PASTAS'];
+
+            // Filtramos las categorías (convertimos todo a minúsculas para comparar correctamente)
+            let categorias = [...new Set(productos.map(p => p.categoria))].filter(cat => 
+                !categoriasExcluidas.map(e => e.toLowerCase()).includes(cat.toLowerCase())
+            );
             
             convoState = { 
                 ...convoState, 
