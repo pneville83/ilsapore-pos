@@ -1,12 +1,11 @@
 // frontend/src/App.js
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, Link, useNavigate } from 'react-router-dom';
 
-// Ya no necesitamos el contexto
-// import { LocationProvider, useLocation } from './context/LocationContext'; 
-import { setLocationFilter, getLocationFilter } from './utils/sessionUtils'; // <-- Importamos la nueva utilidad
+import { setLocationFilter, getLocationFilter } from './utils/sessionUtils';
 import api from './services/api';
+import alertSound from './assets/alert.mp3';
 
 // Importación de Páginas
 import LoginPage from './pages/LoginPage';
@@ -34,9 +33,63 @@ function MainLayout({ children }) {
   const userInfo = JSON.parse(localStorage.getItem('userInfo'));
   const userRole = userInfo ? userInfo.rol : null;
   
-  // Lógica para el Selector de Ubicación Global
+  // --- LÓGICA DE NOTIFICACIÓN MEJORADA ---
+  const lastMaxId = useRef(null);
+
+  useEffect(() => {
+    const checkOrders = async () => {
+      try {
+        const response = await api.getPedidosActivos();
+        const pedidos = response.data;
+
+        if (pedidos && pedidos.length > 0) {
+          const maxIdActual = Math.max(...pedidos.map(p => p.id));
+          
+          if (lastMaxId.current === null) {
+            lastMaxId.current = maxIdActual;
+            return;
+          }
+
+          if (maxIdActual > lastMaxId.current) {
+            const nuevoPedido = pedidos.find(p => p.id === maxIdActual);
+            const obs = (nuevoPedido?.observaciones || "").toLowerCase();
+            
+            console.log(`🚨 Nuevo pedido detectado ID: ${maxIdActual}. Obs: "${obs}"`);
+
+            // DETECCIÓN INTELIGENTE:
+            // Activamos si dice "bot" O si detectamos la frase de pago en efectivo del bot
+            const esDelBot = obs.includes('bot') || obs.includes('paga con');
+
+            if (esDelBot) {
+              lastMaxId.current = maxIdActual;
+
+              // Sonido
+              const audio = new Audio(alertSound);
+              audio.play().catch(() => console.log("🔊 Audio bloqueado"));
+
+              // Pop-up
+              const ir = window.confirm(`🍕 ¡NUEVO PEDIDO DE WHATSAPP!\n\nPedido #${maxIdActual}\n\n¿Quieres ir a revisarlo ahora?`);
+              if (ir) navigate('/estado-pedidos');
+              
+            } else {
+              // Si es manual, solo actualizamos el ID para no repetir
+              lastMaxId.current = maxIdActual;
+            }
+          }
+        }
+      } catch (err) {
+        console.error("❌ Error en el sondeo:", err);
+      }
+    };
+
+    const interval = setInterval(checkOrders, 8000);
+    checkOrders();
+
+    return () => clearInterval(interval);
+  }, [navigate]);
+  // ----------------------------------------------
+
   const [ubicaciones, setUbicaciones] = useState([]);
-  // El estado local del selector se inicializa con el valor guardado
   const [selectedLocationUI, setSelectedLocationUI] = useState(getLocationFilter());
 
   useEffect(() => {
@@ -50,18 +103,14 @@ function MainLayout({ children }) {
   const handleLogout = () => {
     localStorage.removeItem('authToken');
     localStorage.removeItem('userInfo');
-    sessionStorage.clear(); // Limpiamos sessionStorage también
+    sessionStorage.clear(); 
     navigate('/');
   };
 
-  // --- ¡LÓGICA CORREGIDA! ---
   const handleLocationChange = (e) => {
       const locationId = e.target.value || null;
-      setSelectedLocationUI(locationId); // Actualiza la UI del selector
-      setLocationFilter(locationId);    // Guarda el filtro en sessionStorage
-      
-      // Forzamos un refresco completo de la página. Es la forma más robusta de
-      // asegurar que todos los componentes recarguen sus datos con el nuevo filtro.
+      setSelectedLocationUI(locationId); 
+      setLocationFilter(locationId);    
       window.location.reload();
   };
 
@@ -110,7 +159,6 @@ function MainLayout({ children }) {
 function App() {
   return (
     <Router>
-      {/* Ya no necesitamos el LocationProvider */}
       <div className="App">
         <Routes>
           <Route path="/" element={<LoginPage />} />

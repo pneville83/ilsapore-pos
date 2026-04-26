@@ -637,7 +637,7 @@ client.on('message', async (message) => {
                 await client.sendMessage(from, `El monto no es válido o es menor al total de $${totalPedido.toFixed(2)}. Por favor, responde con un número mayor o igual, o con "pago exacto" o "pago completo".`);
                 break;
             }
-            convoState.observaciones = `Cliente paga con $${montoPago.toFixed(2)}`;
+            convoState.observaciones = `[BOT] Cliente paga con $${montoPago.toFixed(2)}`;
             
             try {
                 await client.sendMessage(from, '¡Gracias! Procesando tu pedido... ⏳');
@@ -713,7 +713,7 @@ client.on('message', async (message) => {
                 console.warn(`DEBUG: No se encontró una coincidencia específica para "${bancoCliente}". Usando cuenta por defecto.`); // <<< AÑADIDO
             }
             await client.sendMessage(from, `Por favor, realiza la transferencia a la siguiente cuenta y envía el comprobante a este chat para confirmar tu pedido:\n\n*${datosCuenta}*`);
-            convoState.observaciones = `Transferencia desde ${content}`;
+            convoState.observaciones = `[BOT] Transferencia desde ${content}`;
             convoState.estado = 'ESPERANDO_COMPROBANTE';
             console.log(`DEBUG: Estado de conversación cambiado a: ${convoState.estado}`); // <<< AÑADIDO: DEBUG
             break;
