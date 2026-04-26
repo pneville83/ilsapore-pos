@@ -2,7 +2,9 @@
 import axios from 'axios';
 import { getLocationFilter } from '../utils/sessionUtils'; // <-- Importamos la nueva utilidad
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:4000/api';
+const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:4000/api'                // Si estás en tu PC, usa el backend local
+    : 'https://ilsapore-pos-backend.onrender.com/api'; // Si estás en Vercel, usa Rende
 const apiClient = axios.create({ baseURL: API_URL });
 
 apiClient.interceptors.request.use(

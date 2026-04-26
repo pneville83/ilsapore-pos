@@ -33,7 +33,8 @@ function MainLayout({ children }) {
   const userInfo = JSON.parse(localStorage.getItem('userInfo'));
   const userRole = userInfo ? userInfo.rol : null;
   
-  // --- LÓGICA DE NOTIFICACIÓN MEJORADA ---
+  // --- LÓGICA DE NOTIFICACIÓN GLOBAL (BANNER) ---
+  const [globalAlert, setGlobalAlert] = useState(null);
   const lastMaxId = useRef(null);
 
   useEffect(() => {
@@ -46,6 +47,7 @@ function MainLayout({ children }) {
           const maxIdActual = Math.max(...pedidos.map(p => p.id));
           
           if (lastMaxId.current === null) {
+            console.log("📍 Sistema de alertas activado en Vercel. ID base:", maxIdActual);
             lastMaxId.current = maxIdActual;
             return;
           }
@@ -54,39 +56,35 @@ function MainLayout({ children }) {
             const nuevoPedido = pedidos.find(p => p.id === maxIdActual);
             const obs = (nuevoPedido?.observaciones || "").toLowerCase();
             
-            console.log(`🚨 Nuevo pedido detectado ID: ${maxIdActual}. Obs: "${obs}"`);
-
-            // DETECCIÓN INTELIGENTE:
-            // Activamos si dice "bot" O si detectamos la frase de pago en efectivo del bot
-            const esDelBot = obs.includes('bot') || obs.includes('paga con');
-
-            if (esDelBot) {
+            // Detectar si es del bot
+            if (obs.includes('bot') || obs.includes('paga con')) {
+              console.log("🚨 NUEVO PEDIDO DEL BOT DETECTADO:", maxIdActual);
               lastMaxId.current = maxIdActual;
 
-              // Sonido
+              // 1. Sonar Alerta
               const audio = new Audio(alertSound);
-              audio.play().catch(() => console.log("🔊 Audio bloqueado"));
+              audio.play().catch(e => console.log("🔊 Audio bloqueado por navegador"));
 
-              // Pop-up
-              const ir = window.confirm(`🍕 ¡NUEVO PEDIDO DE WHATSAPP!\n\nPedido #${maxIdActual}\n\n¿Quieres ir a revisarlo ahora?`);
-              if (ir) navigate('/estado-pedidos');
+              // 2. Mostrar Banner Visual (En lugar de confirm)
+              setGlobalAlert(`🍕 ¡NUEVO PEDIDO DE WHATSAPP #${maxIdActual}!`);
               
+              // 3. Quitar el banner automáticamente a los 15 segundos
+              setTimeout(() => setGlobalAlert(null), 15000);
             } else {
-              // Si es manual, solo actualizamos el ID para no repetir
               lastMaxId.current = maxIdActual;
             }
           }
         }
       } catch (err) {
-        console.error("❌ Error en el sondeo:", err);
+        console.error("Error en polling:", err);
       }
     };
 
-    const interval = setInterval(checkOrders, 8000);
+    const interval = setInterval(checkOrders, 10000);
     checkOrders();
 
     return () => clearInterval(interval);
-  }, [navigate]);
+  }, []);
   // ----------------------------------------------
 
   const [ubicaciones, setUbicaciones] = useState([]);
@@ -96,7 +94,7 @@ function MainLayout({ children }) {
     if (userRole === 'superadmin') {
         api.getUbicaciones()
             .then(res => setUbicaciones(res.data))
-            .catch(err => console.error("Error al cargar ubicaciones para el filtro", err));
+            .catch(err => console.error("Error al cargar ubicaciones", err));
     }
   }, [userRole]);
 
@@ -116,6 +114,30 @@ function MainLayout({ children }) {
 
   return (
     <div>
+      {/* BANNER VISUAL DE NOTIFICACIÓN */}
+      {globalAlert && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          backgroundColor: '#27ae60',
+          color: 'white',
+          padding: '15px 40px',
+          borderRadius: '10px',
+          zIndex: 9999,
+          fontWeight: 'bold',
+          boxShadow: '0 5px 25px rgba(0,0,0,0.4)',
+          border: '2px solid white',
+          cursor: 'pointer',
+          textAlign: 'center',
+          animation: 'fadeInDown 0.5s ease'
+        }} onClick={() => { navigate('/estado-pedidos'); setGlobalAlert(null); }}>
+          {globalAlert}
+          <div style={{ fontSize: '0.8rem', fontWeight: 'normal' }}>Hacer clic aquí para ir a pedidos</div>
+        </div>
+      )}
+
       <nav className="main-nav">
         <div className="nav-header">
           <img src={logo} alt="Logo Il Sapore" className="nav-logo" />
