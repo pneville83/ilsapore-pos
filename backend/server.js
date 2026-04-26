@@ -29,6 +29,11 @@ const PAYPHONE_RESPONSE_URL = process.env.PAYPHONE_RESPONSE_URL;
 const PAYPHONE_CANCELLATION_URL = process.env.PAYPHONE_CANCELLATION_URL;
 // const PAYPHONE_WEBHOOK_SECRET = process.env.PAYPHONE_WEBHOOK_SECRET; // Descomentar si PayPhone lo usa y lo configuras
 
+// Ruta health para que no duerma render gratuito
+app.get('/health', (req, res) => {
+  res.status(200).send('OK')
+})
+
 // Middleware
 app.use(cors(corsOptions));
 app.use((req, res, next) => {
