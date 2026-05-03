@@ -197,6 +197,11 @@ client.on('ready', async () => {
 });
 
 client.on('message', async (message) => {
+    // --- FILTRO PARA IGNORAR GRUPOS Y ESTADOS ---
+    if (message.from.endsWith('@g.us') || message.from === 'status@broadcast') {
+        return;
+    }
+
     const from = message.from;
     const content = message.body ? message.body.toLowerCase().trim() : '';
 
